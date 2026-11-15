@@ -65,6 +65,19 @@ def _pick_chat(chats: list[tuple[str, str, str]]) -> tuple[str, str, str]:
 
 
 def _save_chat_id(chat_id: str, config_path: str | None) -> Path:
+    # Если проект настроен через .env — пишем туда, иначе в config.json.
+    env_path = ROOT / ".env"
+    if config_path is None and env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if line.strip().startswith("TELEGRAM_CHAT_ID="):
+                lines[index] = f"TELEGRAM_CHAT_ID={chat_id}"
+                break
+        else:
+            lines.append(f"TELEGRAM_CHAT_ID={chat_id}")
+        env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        return env_path
+
     path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
     raw = json.loads(path.read_text(encoding="utf-8-sig"))
     telegram = raw.setdefault("telegram", {})

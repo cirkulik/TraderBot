@@ -5,6 +5,9 @@ reports/
 # Личный конфиг с токеном Telegram и chat_id
 config.json
 
+# Секреты (токен бота, chat_id)
+.env
+
 # Сохранённый торговый счёт (логин/пароль)
 data/account.json
 account.json

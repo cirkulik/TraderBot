@@ -1,13 +1,15 @@
-"""Конфигурация бота: значения по умолчанию + config.json."""
+"""Конфигурация бота: значения по умолчанию + config.json + .env."""
 from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = ROOT / "config.json"
+ENV_PATH = ROOT / ".env"
 DATA_DIR = ROOT / "data"
 REPORTS_DIR = ROOT / "reports"
 
@@ -201,14 +203,63 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def load_env_file(path: str | Path | None = None) -> dict[str, str]:
+    """Читает .env в корне проекта: строки KEY=VALUE, # — комментарий.
+
+    Без внешних зависимостей: файл маленький, формат простой.
+    """
+    file = Path(path) if path else ENV_PATH
+    if not file.exists():
+        return {}
+    try:
+        text = file.read_text(encoding="utf-8-sig")
+    except OSError:
+        return {}
+    data: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key:
+            data[key] = value
+    return data
+
+
+def _env_value(name: str, env: dict[str, str]) -> str:
+    """Переменная окружения важнее .env, .env важнее config.json."""
+    return (os.environ.get(name) or env.get(name) or "").strip()
+
+
+def _apply_env(cfg: dict, env: dict[str, str] | None = None) -> dict:
+    """Подставляет секреты из окружения/.env вместо config.json.
+
+    Так токен и chat_id можно не хранить в файле конфига вообще.
+    """
+    env = load_env_file() if env is None else env
+    token = _env_value("TELEGRAM_TOKEN", env)
+    chat_id = _env_value("TELEGRAM_CHAT_ID", env)
+    if token:
+        cfg["telegram"]["token"] = token
+        cfg["telegram"]["enabled"] = True
+    if chat_id:
+        cfg["telegram"]["chat_id"] = chat_id
+        cfg["telegram"]["enabled"] = True
+    return cfg
+
+
 def load_config(path: str | Path | None = None) -> dict:
-    """Читает config.json и дополняет его значениями по умолчанию."""
+    """Читает config.json, дополняет умолчаниями и секретами из .env."""
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
     user_cfg: dict = {}
     if cfg_path.exists():
         with cfg_path.open("r", encoding="utf-8") as fh:
             user_cfg = json.load(fh)
-    return _deep_merge(DEFAULTS, user_cfg)
+    return _apply_env(_deep_merge(DEFAULTS, user_cfg))
 
 
 def save_config(cfg: dict, path: str | Path | None = None) -> Path:
