@@ -1,0 +1,23 @@
+# Данные и личные файлы
+data/
+reports/
+
+# Личный конфиг с токеном Telegram и chat_id
+config.json
+
+# Сохранённый торговый счёт (логин/пароль)
+data/account.json
+account.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Логи
+*.log
+
+# Системное
+.DS_Store
+Thumbs.db

@@ -1,0 +1,198 @@
+{
+  "symbol": "XAUUSD",
+  "timeframe": "M5",
+  "max_spread_points": 30,
+  "max_risk_price": 12.0,
+  "strategy": {
+    "atr_period": 14,
+    "rsi_period": 14,
+    "adx_period": 14,
+    "cooldown_bars": 6,
+    "max_signals_per_day": 8,
+    "trail_atr": 0.0,
+    "trail_start_r": 1.0,
+    "setups": {
+      "dip_london": {
+        "enabled": true,
+        "direction": "BUY",
+        "session_start_hour": 9,
+        "session_end_hour": 15,
+        "session_label": "Лондонская сессия",
+        "trigger": "drop",
+        "drop_bars": 6,
+        "drop_atr": 3.0,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.7,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0
+      },
+      "dip_late": {
+        "enabled": true,
+        "direction": "BUY",
+        "session_start_hour": 11,
+        "session_end_hour": 15,
+        "session_label": "День Лондона",
+        "trigger": "drop",
+        "drop_bars": 6,
+        "drop_atr": 2.75,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.7,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0
+      },
+      "sell_noon": {
+        "enabled": true,
+        "direction": "SELL",
+        "session_start_hour": 12,
+        "session_end_hour": 13,
+        "session_label": "Дневной откат",
+        "trigger": "clock",
+        "enter_hour": 12,
+        "enter_minute": 0,
+        "sl_atr": 1.5,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 2.0,
+        "rr": 1.2,
+        "time_exit_bars": 6,
+        "breakeven_at_r": 0.0
+      },
+      "rsi_ny": {
+        "enabled": true,
+        "direction": "BUY",
+        "session_start_hour": 15,
+        "session_end_hour": 18,
+        "session_label": "Нью-Йоркская сессия",
+        "trigger": "rsi",
+        "rsi_level": 30,
+        "sl_atr": 1.0,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.5,
+        "rr": 1.5,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 1.0
+      },
+      "stretch_ny": {
+        "enabled": true,
+        "direction": "BUY",
+        "session_start_hour": 15,
+        "session_end_hour": 18,
+        "session_label": "Нью-Йоркская сессия",
+        "trigger": "stretch",
+        "ema_period": 50,
+        "stretch_atr": 2.0,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.7,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0
+      },
+      "sell_break": {
+        "enabled": true,
+        "direction": "SELL",
+        "session_start_hour": 12,
+        "session_end_hour": 18,
+        "session_label": "Вторая половина дня",
+        "trigger": "breakout",
+        "breakout_bars": 7,
+        "breakout_buffer_atr": 0.0,
+        "trend_filter": "ema",
+        "mtf_trend": 15,
+        "mtf_close_filter": true,
+        "mtf_min_adx": 20,
+        "sl_use_swing": false,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.8,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0,
+        "xm": {
+          "series": "xag",
+          "mode": "ret1h",
+          "th": 0.0
+        }
+      },
+      "short_rally_london": {
+        "enabled": false,
+        "direction": "SELL",
+        "session_start_hour": 9,
+        "session_end_hour": 15,
+        "session_label": "Лондонская сессия",
+        "trigger": "drop",
+        "drop_bars": 6,
+        "drop_atr": 3.0,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.7,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0
+      }
+    }
+  },
+  "backtest": {
+    "spread_points": 13,
+    "initial_balance": 1000.0,
+    "commission_per_lot": 0.0,
+    "reference_lot": 0.01
+  },
+  "live": {
+    "poll_seconds": 5,
+    "history_bars": 5000,
+    "journal_path": "data/signals.csv"
+  },
+  "cross_market": {
+    "enabled": true,
+    "minutes": 15,
+    "bars": 600,
+    "series": {
+      "xag": {
+        "symbol": "XAGUSD",
+        "timeframe": "M15",
+        "path": "data/XAGUSD_M15.csv"
+      },
+      "eur": {
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "path": "data/EURUSD_M15.csv"
+      }
+    }
+  },
+  "execution": {
+    "enabled": true,
+    "symbol": "XAUUSD",
+    "lot": 0.02,
+    "magic": 770001,
+    "server": "",
+    "terminal_path": "",
+    "max_positions": 1,
+    "max_signal_age_minutes": 3,
+    "max_entry_slip_points": 40,
+    "deviation_points": 20,
+    "poll_seconds": 2,
+    "state_path": "data/executor.csv",
+    "log_path": "data/executor.log"
+  },
+  "telegram": {
+    "enabled": false,
+    "token": "",
+    "chat_id": "",
+    "notify_startup": true,
+    "timeout_seconds": 10,
+    "db_path": "data/goldbot.db",
+    "default_lang": "ru",
+    "poll_commands": true
+  }
+}
