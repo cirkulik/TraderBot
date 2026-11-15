@@ -173,7 +173,7 @@
   "execution": {
     "enabled": true,
     "symbol": "XAUUSD",
-    "lot": 0.02,
+    "lot": 0.01,
     "magic": 770001,
     "server": "",
     "terminal_path": "",
