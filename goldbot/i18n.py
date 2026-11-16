@@ -153,14 +153,9 @@ MESSAGES = {
             "Команды:\n"
             "/start — включить сигналы\n"
             "/stop — отключить сигналы\n"
-            "/lang — сменить язык\n"
-            "/id — мой chat_id"
+            "/lang — сменить язык"
         ),
-        "not_admin": (
-            "Эта команда только для администратора.\n"
-            "Ваш chat_id: {chat_id} — его нужно указать в TELEGRAM_CHAT_ID."
-        ),
-        "your_id": "Ваш chat_id: {chat_id}",
+        "not_admin": "Эта команда только для администратора.",
         "admin_no_stop": "Администратор всегда получает сигналы — отключить себя нельзя.",
         "startup_title": "🤖 GoldBot запущен",
         "startup_setups": "XAUUSD M5, сетапы: {setups}",
@@ -210,14 +205,9 @@ MESSAGES = {
             "Komandalar:\n"
             "/start — siqnalları aç\n"
             "/stop — siqnalları söndür\n"
-            "/lang — dili dəyiş\n"
-            "/id — mənim chat_id"
+            "/lang — dili dəyiş"
         ),
-        "not_admin": (
-            "Bu komanda yalnız administrator üçündür.\n"
-            "Sizin chat_id: {chat_id} — onu TELEGRAM_CHAT_ID kimi yazmaq lazımdır."
-        ),
-        "your_id": "Sizin chat_id: {chat_id}",
+        "not_admin": "Bu komanda yalnız administrator üçündür.",
         "admin_no_stop": "Administrator həmişə siqnal alır — özünü söndürə bilməz.",
         "startup_title": "🤖 GoldBot işə salındı",
         "startup_setups": "XAUUSD M5, setaplar: {setups}",

@@ -283,8 +283,6 @@ class TelegramBot:
             self._cmd_stop(chat_id, user or {}, lang)
         elif command == "/lang":
             self.send(chat_id, i18n.t(lang, "choose_lang"), self._lang_keyboard())
-        elif command == "/id":
-            self.send(chat_id, i18n.t(lang, "your_id", chat_id=chat_id))
         elif command in ("/users", "/allow", "/deny", "/remove"):
             self._cmd_admin(command, arg, chat_id, lang)
         else:
@@ -313,7 +311,7 @@ class TelegramBot:
 
     def _cmd_admin(self, command: str, arg: str, chat_id: str, lang: str) -> None:
         if not self._is_admin(chat_id):
-            self.send(chat_id, i18n.t(lang, "not_admin", chat_id=chat_id))
+            self.send(chat_id, i18n.t(lang, "not_admin"))
             return
         if command == "/users":
             self._send_users(chat_id, lang)
