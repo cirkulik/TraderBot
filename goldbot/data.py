@@ -191,13 +191,22 @@ def connect(
     kwargs = {"path": path} if path else {}
     if not mt5.initialize(**kwargs):
         error = mt5.last_error()
-        hint = (
-            "Проверьте: 1) терминал MetaTrader 5 установлен и это 64-битная версия; "
-            "2) терминал запущен и в нём включена алгоритмическая торговля; "
-            "3) если терминал стоит в нестандартной папке — укажите путь: "
-            'python run_live.py --terminal "C:\\путь\\terminal64.exe" '
-            '(для исполнителя: run_executor.py --terminal ...).'
-        )
+        code = error[0] if isinstance(error, tuple) and error else None
+        if code == -10005:
+            hint = (
+                "Терминал найден, но не отвечает (IPC timeout). Запустите MetaTrader 5 "
+                "вручную, войдите в счёт (демо подойдёт), дождитесь подключения — "
+                "внизу справа должны идти цены — и запустите бота снова. "
+                "Если терминал только что установлен, первый запуск занимает до минуты."
+            )
+        else:
+            hint = (
+                "Проверьте: 1) терминал MetaTrader 5 установлен и это 64-битная версия; "
+                "2) терминал запущен и в нём включена алгоритмическая торговля; "
+                "3) если терминал стоит в нестандартной папке — укажите путь: "
+                'python run_live.py --terminal "C:\\путь\\terminal64.exe" '
+                '(для исполнителя: run_executor.py --terminal ...).'
+            )
         raise MT5Error(f"Не удалось подключиться к MetaTrader 5: {error}. {hint}")
 
     if login and password and server:
