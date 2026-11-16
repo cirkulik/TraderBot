@@ -369,7 +369,7 @@ def load_xmarket(cfg: dict) -> dict[str, pd.DataFrame]:
     return frames
 
 
-def run_live(cfg: dict | None = None, once: bool = False) -> None:
+def run_live(cfg: dict | None = None, once: bool = False, terminal_path: str | None = None) -> None:
     cfg = cfg or load_config()
     symbol = cfg["symbol"]
     tf = cfg["timeframe"]
@@ -379,7 +379,7 @@ def run_live(cfg: dict | None = None, once: bool = False) -> None:
     journal = SignalJournal(journal_path)
     bot = TelegramBot.from_config(cfg)
 
-    connect()
+    connect(path=terminal_path)
     try:
         info = ensure_symbol(symbol)
         account = get_account_info()

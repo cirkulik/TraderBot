@@ -5,9 +5,17 @@
 
 ## Что нужно
 
-- Windows, Python 3.10+
+- Windows, Python 3.10+ (обязательно 64-битный)
 - MetaTrader 5 с символом **XAUUSD**, включённый алготрейдинг
 - (по желанию) Telegram-бот для сигналов
+
+Терминал должен быть установлен и запущен. Если он стоит в нестандартной папке,
+путь указывается вручную:
+
+```bat
+python run_live.py --terminal "D:\MetaTrader 5\terminal64.exe"
+python run_executor.py --terminal "D:\MetaTrader 5\terminal64.exe"
+```
 
 ## Установка
 

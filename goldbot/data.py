@@ -185,10 +185,15 @@ def connect(
 
     kwargs = {"path": path} if path else {}
     if not mt5.initialize(**kwargs):
-        raise MT5Error(
-            f"Не удалось подключиться к MetaTrader 5: {mt5.last_error()}. "
-            "Проверьте, что терминал запущен и в нём включена торговля."
+        error = mt5.last_error()
+        hint = (
+            "Проверьте: 1) терминал MetaTrader 5 установлен и это 64-битная версия; "
+            "2) терминал запущен и в нём включена алгоритмическая торговля; "
+            "3) если терминал стоит в нестандартной папке — укажите путь: "
+            'python run_live.py --terminal "C:\\путь\\terminal64.exe" '
+            '(для исполнителя: run_executor.py --terminal ...).'
         )
+        raise MT5Error(f"Не удалось подключиться к MetaTrader 5: {error}. {hint}")
 
     if login and password and server:
         known = known_servers()
