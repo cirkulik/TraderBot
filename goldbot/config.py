@@ -174,7 +174,7 @@ DEFAULTS: dict[str, Any] = {
         "terminal_path": "",
         "max_positions": 1,
         "max_signal_age_minutes": 3,
-        "max_entry_slip_points": 40,
+        "max_entry_slip_points": 100,
         "deviation_points": 20,
         "poll_seconds": 2,
         "state_path": "data/executor.csv",

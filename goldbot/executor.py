@@ -78,7 +78,7 @@ class Executor:
         self.magic = int(ex.get("magic", 770001))
         self.max_positions = max(1, int(ex.get("max_positions", 1)))
         self.max_age = float(ex.get("max_signal_age_minutes", 3))
-        self.max_slip = float(ex.get("max_entry_slip_points", 40))
+        self.max_slip = float(ex.get("max_entry_slip_points", 100))
         self.deviation = int(ex.get("deviation_points", 20))
         self.poll = float(ex.get("poll_seconds", 2))
         self.state_path = ROOT / str(ex.get("state_path", "data/executor.csv"))
