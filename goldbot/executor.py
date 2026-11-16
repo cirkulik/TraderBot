@@ -394,6 +394,7 @@ class Executor:
             new_lot = float(ex.get("lot", self.lot))
             new_max = max(1, int(ex.get("max_positions", self.max_positions)))
             new_age = float(ex.get("max_signal_age_minutes", self.max_age))
+            new_slip = float(ex.get("max_entry_slip_points", self.max_slip))
         except (TypeError, ValueError):
             self.log("в config.json некорректные execution.* — оставляю как было")
             return
@@ -407,6 +408,9 @@ class Executor:
         if new_age != self.max_age:
             self.log(f"возраст сигнала: {self.max_age:g} -> {new_age:g} мин")
             self.max_age = new_age
+        if new_slip != self.max_slip:
+            self.log(f"лимит проскальзывания: {self.max_slip:g} -> {new_slip:g} пт")
+            self.max_slip = new_slip
 
     def pending(self) -> list[pd.Series]:
         journal = self.journal()
