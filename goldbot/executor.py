@@ -16,7 +16,6 @@
 """
 from __future__ import annotations
 
-import getpass
 import json
 import time
 from datetime import datetime, timezone
@@ -500,7 +499,7 @@ def ask_account(
                 server = ""
         if not password:
             try:
-                password = getpass.getpass("Пароль MT5 (ввод не отображается): ")
+                password = input("Пароль MT5: ").strip()
             except EOFError:
                 password = ""
         if not (password and server):
@@ -519,7 +518,7 @@ def ask_account(
         return {"path": path}
 
     try:
-        password = getpass.getpass("Пароль MT5 (ввод не отображается): ")
+        password = input("Пароль MT5: ").strip()
         prompt_server = f"Сервер [{default_server}]: " if default_server else "Сервер (например MetaQuotes-Demo): "
         server = input(prompt_server).strip() or default_server
     except EOFError:
