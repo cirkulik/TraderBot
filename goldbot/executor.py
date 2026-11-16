@@ -68,6 +68,19 @@ def _fmt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+# MT5 отклоняет комментарий длиннее 29 символов (проверено на MetaQuotes-Demo).
+COMMENT_LIMIT = 27
+
+
+def _short_comment(signal_id: str) -> str:
+    """Короткий ASCII-комментарий: серверы MT5 режут длинные и не-ASCII."""
+    comment = f"goldbot {signal_id}"
+    if len(comment) <= COMMENT_LIMIT:
+        return comment
+    short = f"gb {signal_id}"
+    return short[:COMMENT_LIMIT]
+
+
 class Executor:
     def __init__(self, cfg: dict, dry_run: bool = False) -> None:
         self.cfg = cfg
@@ -219,7 +232,7 @@ class Executor:
             "tp": round(tp, 2),
             "deviation": self.deviation,
             "magic": self.magic,
-            "comment": f"goldbot {row['id']}"[:31],
+            "comment": _short_comment(row["id"]),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": self._filling_mode(),
         }
@@ -265,6 +278,7 @@ class Executor:
                 break
             if result.retcode in MARKET_CLOSED_CODES:
                 self.log(f"{row['id']}: рынок закрыт или торговля запрещена ({result.retcode})")
+                self._mark_skipped(row, f"market {result.retcode}")
                 return False
             if result.retcode in RETRY_CODES and attempt < 2:
                 tick = mt5.symbol_info_tick(self.symbol)
@@ -278,6 +292,7 @@ class Executor:
             code = getattr(result, "retcode", "?")
             comment = getattr(result, "comment", "")
             self.log(f"{row['id']}: ордер не принят — {code} {comment}")
+            self._mark_skipped(row, f"{code} {comment}".strip())
             return False
 
         fill = float(result.price or price)
@@ -314,6 +329,30 @@ class Executor:
         row_df = pd.DataFrame([row], columns=STATE_COLUMNS)
         df = row_df if df.empty else pd.concat([df, row_df], ignore_index=True)
         self.save_state(df)
+
+    def _mark_skipped(self, row: pd.Series, reason: str) -> None:
+        """Помечает сигнал, чтобы не пытаться открыть его каждые 2 секунды."""
+        self._append_state(
+            {
+                "signal_id": str(row["id"]),
+                "ticket": 0,
+                "opened_utc": _fmt(_now_utc()),
+                "setup": str(row.get("setup", "")),
+                "direction": "",
+                "lot": "",
+                "signal_entry": "",
+                "open_price": "",
+                "sl": "",
+                "tp": "",
+                "risk_price": "",
+                "status": "SKIPPED",
+                "close_utc": "",
+                "close_price": "",
+                "profit": "",
+                "close_reason": reason[:40],
+                "result_r": "",
+            }
+        )
 
     # --- сверка закрытых ---------------------------------------------------
     def sync(self) -> None:
