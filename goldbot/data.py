@@ -1,6 +1,7 @@
 """Работа с MetaTrader 5: подключение, загрузка котировок, кеш истории."""
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 import MetaTrader5 as mt5
 import pandas as pd
 
-from .config import DATA_DIR
+from .config import DATA_DIR, load_env_file
 
 TF_MAP = {
     "M1": mt5.TIMEFRAME_M1,
@@ -182,6 +183,10 @@ def connect(
             login = saved["login"]
             password = saved["password"]
             server = saved["server"]
+
+    if path is None:
+        # Путь к терминалу можно задать один раз в .env (TERMINAL_PATH).
+        path = os.environ.get("TERMINAL_PATH") or load_env_file().get("TERMINAL_PATH") or None
 
     kwargs = {"path": path} if path else {}
     if not mt5.initialize(**kwargs):

@@ -243,12 +243,15 @@ def _apply_env(cfg: dict, env: dict[str, str] | None = None) -> dict:
     env = load_env_file() if env is None else env
     token = _env_value("TELEGRAM_TOKEN", env)
     chat_id = _env_value("TELEGRAM_CHAT_ID", env)
+    terminal = _env_value("TERMINAL_PATH", env) or _env_value("MT5_TERMINAL", env)
     if token:
         cfg["telegram"]["token"] = token
         cfg["telegram"]["enabled"] = True
     if chat_id:
         cfg["telegram"]["chat_id"] = chat_id
         cfg["telegram"]["enabled"] = True
+    if terminal:
+        cfg["execution"]["terminal_path"] = terminal
     return cfg
 
 

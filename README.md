@@ -10,12 +10,14 @@
 - (по желанию) Telegram-бот для сигналов
 
 Терминал должен быть установлен и запущен. Если он стоит в нестандартной папке,
-путь указывается вручную:
+путь указывается один раз в `.env`:
 
-```bat
-python run_live.py --terminal "D:\MetaTrader 5\terminal64.exe"
-python run_executor.py --terminal "D:\MetaTrader 5\terminal64.exe"
 ```
+TERMINAL_PATH=D:\MetaTrader 5\terminal64.exe
+```
+
+После этого `start_bot.bat` и `start_executor.bat` запускаются двойным кликом.
+Флаг `--terminal "путь\terminal64.exe"` тоже работает, если удобнее разово.
 
 ## Установка
 
