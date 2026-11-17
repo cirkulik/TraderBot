@@ -25,6 +25,7 @@ SETUP_LABELS = {
         "stretch_ny": "Растяжение от EMA50 (Нью-Йорк)",
         "sell_noon": "Дневной откат (продажа в 12:00)",
         "sell_break": "Пробой вниз (продажа)",
+        "swing_high": "Вход у хая по тренду (продажа)",
         "short_rally_london": "Продажа после роста (Лондон)",
     },
     "az": {
@@ -34,6 +35,7 @@ SETUP_LABELS = {
         "stretch_ny": "EMA50-dən uzaqlaşma (Nyu-York)",
         "sell_noon": "Günlük geri çəkilmə (12:00 satış)",
         "sell_break": "Aşağı qırılma (satış)",
+        "swing_high": "Trenddə zirvədən satış",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
     },
 }
@@ -46,6 +48,7 @@ SESSION_LABELS = {
         "Нью-Йоркская сессия": "Nyu-York sessiyası",
         "Вторая половина дня": "Günün ikinci yarısı",
         "Дневной откат": "Günlük geri çəkilmə",
+        "Тренд вниз": "Aşağı trend",
         "торговая": "ticarət sessiyası",
     },
 }
@@ -87,6 +90,9 @@ REASONS = {
         "xm_eur_trend_down": "EURUSD ниже EMA200 на M15 — доллар силён, продажа подтверждена",
         "xm_eur_trend_up": "EURUSD выше EMA200 на M15 — доллар слаб, покупка подтверждена",
         "session": "Сессия: {label}",
+        "swing_high_zone": "Цена у максимума последних {bars} баров — локальный хай",
+        "swing_high_reject": "Медвежий бар с верхней тенью {wick:.1f} ATR — отказ от роста",
+        "swing_high_rsi": "RSI(14) = {rsi:.1f} — отскок был перекуплен",
         "raw": "{text}",
     },
     "az": {
@@ -124,6 +130,9 @@ REASONS = {
         "xm_eur_trend_down": "EURUSD M15-də EMA200-dən aşağıdadır — dollar güclüdür, satış təsdiqləndi",
         "xm_eur_trend_up": "EURUSD M15-də EMA200-dən yuxarıdadır — dollar zəifdir, alış təsdiqləndi",
         "session": "Sessiya: {label}",
+        "swing_high_zone": "Qiymət son {bars} barın maksimumundadır — lokal zirvə",
+        "swing_high_reject": "Üst kölgəsi {wick:.1f} ATR olan ayı barı — yüksəlişdən imtina",
+        "swing_high_rsi": "RSI(14) = {rsi:.1f} — sıçrayış həddindən artıq alınmışdı",
         "raw": "{text}",
     },
 }

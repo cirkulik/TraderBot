@@ -74,6 +74,7 @@ SETUP_LABELS = {
     "stretch_ny": "Растяжение от EMA50 (Нью-Йорк)",
     "sell_noon": "Дневной откат (продажа в 12:00)",
     "sell_break": "Пробой вниз (продажа)",
+    "swing_high": "Вход у хая по тренду (продажа)",
 }
 
 
@@ -167,6 +168,65 @@ def _setup_condition(out: pd.DataFrame, setup: dict) -> pd.Series:
         else:
             level = out["low"].rolling(bars).min().shift(1)
             cond &= (out["close"] < level - buffer_atr * out["atr"]) & (out["close"] < out["open"])
+    elif trigger == "swing_high":
+        # Вход у локального хая: цена подошла к максимуму последних N баров
+        # и бар закрылся вниз с верхней тенью (отказ от роста).
+        look = int(setup.get("sh_lookback", 24))
+        zone = float(setup.get("sh_zone_atr", 0.5))
+        wick = float(setup.get("sh_wick_atr", 0.3))
+        pos = float(setup.get("sh_close_pos", 0.5))
+        rally = float(setup.get("sh_rally_atr", 1.0))
+        level = out["high"].rolling(look).max().shift(1)
+        base = out["low"].rolling(look).min().shift(1)
+        rng = (out["high"] - out["low"]).replace(0, np.nan)
+        close_pos = (out["close"] - out["low"]) / rng
+        body_high = out[["open", "close"]].max(axis=1)
+        body_low = out[["open", "close"]].min(axis=1)
+        if direction == "SELL":
+            cond &= (out["high"] >= level - zone * out["atr"]) & (
+                (level - base) >= rally * out["atr"]
+            )
+            cond &= (
+                (out["close"] < out["open"])
+                & (close_pos <= pos)
+                & ((out["high"] - body_high) >= wick * out["atr"])
+            )
+        else:
+            cond &= (out["low"] <= base + zone * out["atr"]) & (
+                (level - base) >= rally * out["atr"]
+            )
+            cond &= (
+                (out["close"] > out["open"])
+                & (close_pos >= 1.0 - pos)
+                & ((body_low - out["low"]) >= wick * out["atr"])
+            )
+    elif trigger == "retest_break":
+        # Ретест пробитой поддержки: цена отросла к минимуму последних N баров
+        # и закрылась обратно под ним — уровень стал сопротивлением.
+        look = int(setup.get("rb_lookback", 24))
+        zone = float(setup.get("rb_zone_atr", 0.4))
+        level = out["low"].rolling(look).min().shift(1)
+        if direction == "SELL":
+            cond &= (out["high"] >= level - zone * out["atr"]) & (out["close"] < level)
+            cond &= out["close"] < out["open"]
+        else:
+            level = out["high"].rolling(look).max().shift(1)
+            cond &= (out["low"] <= level + zone * out["atr"]) & (out["close"] > level)
+            cond &= out["close"] > out["open"]
+    elif trigger == "pullback_cross":
+        # Откат вниз после отскока: цена была выше EMA20, вернулась под неё,
+        # RSI на отскоке был высоким, бар медвежий. Тренд — вниз.
+        period = int(setup.get("pc_ema", 20))
+        ema_series = out["ema20"] if period == 20 else ema(out["close"], period)
+        min_rsi = float(setup.get("pc_min_rsi", 50))
+        if direction == "SELL":
+            cond &= (out["close"] < out["ema200"]) & (out["ema50"] < out["ema200"])
+            cond &= (out["close"].shift(1) > ema_series.shift(1)) & (out["close"] < ema_series)
+            cond &= (out["rsi"].shift(1) >= min_rsi) & (out["close"] < out["open"])
+        else:
+            cond &= (out["close"] > out["ema200"]) & (out["ema50"] > out["ema200"])
+            cond &= (out["close"].shift(1) < ema_series.shift(1)) & (out["close"] > ema_series)
+            cond &= (out["rsi"].shift(1) <= min_rsi) & (out["close"] > out["open"])
     elif trigger == "vwap":
         typical = (out["high"] + out["low"] + out["close"]) / 3.0
         vol = out["tick_volume"].fillna(0).clip(lower=0)
@@ -641,6 +701,14 @@ def _reasons(
             color = "красных" if direction == "BUY" else "зелёных"
             state = "перепроданность" if direction == "BUY" else "перекупленность"
             reasons.append(raw(f"{bars} {color} баров подряд — локальная {state}"))
+        elif trigger == "swing_high":
+            look = int(setup.get("sh_lookback", 10))
+            atr_v = float(row["atr"]) or 1.0
+            wick = (float(row["high"]) - max(float(row["open"]), float(row["close"]))) / atr_v
+            reasons.append(("swing_high_zone", {"bars": look}))
+            reasons.append(("swing_high_reject", {"wick": wick}))
+            if "min_rsi" in setup:
+                reasons.append(("swing_high_rsi", {"rsi": float(row["rsi"])}))
         elif trigger == "trend_pullback":
             reasons.append(
                 raw(
@@ -766,7 +834,7 @@ def _reasons(
         reasons.append(
             ("mtf_trend_up" if fast > slow else "mtf_trend_down", {"minutes": mtf})
         )
-        if "mtf_min_adx" in setup:
+        if "mtf_min_adx" in setup and float(setup.get("mtf_min_adx") or 0) > 0:
             reasons.append(
                 ("mtf_adx", {"minutes": mtf, "adx": float(row[f"{prefix}_adx"])})
             )
