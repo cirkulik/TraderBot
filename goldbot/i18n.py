@@ -27,6 +27,7 @@ SETUP_LABELS = {
         "sell_break": "Пробой вниз (продажа)",
         "swing_high": "Вход у хая по тренду (продажа)",
         "pullback_cross": "Возврат выше EMA10 (покупка)",
+        "keltner": "Растяжение от EMA20 (канал Кельтнера)",
         "short_rally_london": "Продажа после роста (Лондон)",
     },
     "az": {
@@ -38,6 +39,7 @@ SETUP_LABELS = {
         "sell_break": "Aşağı qırılma (satış)",
         "swing_high": "Trenddə zirvədən satış",
         "pullback_cross": "EMA10-dan yuxarı qayıdış (alış)",
+        "keltner": "EMA20-dən uzanma (Keltner kanalı)",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
     },
 }
@@ -100,6 +102,10 @@ REASONS = {
         "pc_cross_down": "Цена снова ниже EMA{period} — отскок вверх продан",
         "pc_rsi_up": "RSI(14) на откате = {rsi:.1f} — перекупленности не было",
         "pc_rsi_down": "RSI(14) на отскоке = {rsi:.1f} — перепроданности не было",
+        "kelt_above": "Цена на {dist:.1f} ATR выше EMA{period} — растяжение вверх",
+        "kelt_below": "Цена на {dist:.1f} ATR ниже EMA{period} — растяжение вниз",
+        "kelt_reject_sell": "Бар закрылся вниз — отказ от роста",
+        "kelt_reject_buy": "Бар закрылся вверх — отказ от падения",
         "raw": "{text}",
     },
     "az": {
@@ -144,6 +150,10 @@ REASONS = {
         "pc_cross_down": "Qiymət yenidən EMA{period}-dən aşağıdadır — yüksəliş geri çəkilməsi satılıb",
         "pc_rsi_up": "Geri çəkilmədə RSI(14) = {rsi:.1f} — həddindən artıq alış yox idi",
         "pc_rsi_down": "Sıçrayışda RSI(14) = {rsi:.1f} — həddindən artıq satış yox idi",
+        "kelt_above": "Qiymət EMA{period}-dən {dist:.1f} ATR yuxarıda — yuxarı uzanma",
+        "kelt_below": "Qiymət EMA{period}-dən {dist:.1f} ATR aşağıda — aşağı uzanma",
+        "kelt_reject_sell": "Bar aşağı bağlandı — yüksəlişdən imtina",
+        "kelt_reject_buy": "Bar yuxarı bağlandı — enişdən imtina",
         "raw": "{text}",
     },
 }

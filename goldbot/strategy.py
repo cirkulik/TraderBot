@@ -767,12 +767,18 @@ def _reasons(
                 raw(f"RSI(14) = {float(row['rsi']):.1f} и развернулся {side} в тренде")
             )
         elif trigger == "keltner":
+            period = int(setup.get("kelt_period", 20))
+            if period == 20:
+                mid = float(row["ema20"])
+            else:
+                mid = float(ema(df["close"], period).iloc[index])
+            dist = abs(float(row["close"]) - mid) / (float(row["atr"]) or 1.0)
             reasons.append(
-                raw(
-                    "Цена ниже нижней границы канала Кельтнера — перепроданность"
-                    if direction == "BUY"
-                    else "Цена выше верхней границы канала Кельтнера — перекупленность"
-                )
+                ("kelt_above" if direction == "SELL" else "kelt_below",
+                 {"period": period, "dist": dist})
+            )
+            reasons.append(
+                ("kelt_reject_sell" if direction == "SELL" else "kelt_reject_buy", {})
             )
         elif trigger == "gap":
             reasons.append(
