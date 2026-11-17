@@ -1,15 +1,23 @@
 """Проверка сетапов на текущем окне и сравнение с прошлой проверкой.
 
+Смысл: работаем по текущему режиму, а не по всей истории. Сетап, который
+сломался сейчас, выключаем; сетап, который в минусе только на коротком окне,
+оставляем.
+
 Запуск:
     python run_monitor.py                # последние 30 дней
-    python run_monitor.py --days 90      # последние 90 дней
+    python run_monitor.py --days 60      # последние 60 дней
     python run_monitor.py --refresh      # докачать историю из MT5
 
 Что показывает:
   * по каждому включённому сетапу — сделки, winrate, profit factor, R, просадку;
+  * соло-цифры (сетап сам по себе) и фактические в портфеле: в портфеле
+    открыта одна позиция за раз, поэтому часть сигналов вытесняется;
   * сколько сигналов реально ушло в журнал за окно;
   * что изменилось с прошлой проверки (новые сделки и добавленный R);
   * какие сетапы ушли в минус и сколько сделок для этого нужно.
+
+Правило: сетап выключаем, если он в минусе и за 30, и за 60 дней.
 
 История проверок хранится в data/monitor_last.json (перезаписывается
 каждым запуском).
@@ -144,12 +152,17 @@ def load_state() -> dict:
 
 
 def status(row: dict, delta_r: float | None, new_trades: int | None) -> str:
-    if row["n"] < MIN_TRADES:
-        return "мало сделок"
-    if row["r"] < 0:
+    """Статус по фактическому вкладу в портфель, а не по соло-цифрам."""
+    if row["n_p"] == 0:
+        return "нет сделок"
+    if row["r_p"] < 0:
+        if row["n_p"] < MIN_TRADES:
+            return "В МИНУСЕ (мало сд.)"
         return "В МИНУСЕ"
     if delta_r is not None and new_trades and new_trades >= WARN_TRADES and delta_r < 0:
         return "ухудшился"
+    if row["n_p"] < MIN_TRADES:
+        return "мало сделок"
     return "ok"
 
 
@@ -194,7 +207,7 @@ def main() -> int:
     print(f"  окно: {start_server:%d.%m %H:%M} .. {last_bar:%d.%m %H:%M} "
           f"(сервер), {len(window)} баров")
     if prev_days and prev_days != args.days:
-        print(f"  прошлая проверка была за {prev_days} дней — сравнение только по R")
+        print(f"  прошлая проверка была за {prev_days} дней — сравнение пропущено")
     print("=" * 96)
     print(f"  портфель: {len(bt)} сделок, WR {base.stats['winrate']:.1f}%, "
           f"PF {base.stats['profit_factor']:.2f}, "
@@ -202,6 +215,8 @@ def main() -> int:
     if journal:
         total = sum(journal.values())
         print(f"  сигналов в журнале за окно: {total}")
+    print("  соло — сетап сам по себе; «в портфеле» — фактические сделки "
+          "(одна позиция за раз)")
     print()
 
     header = (
@@ -215,19 +230,24 @@ def main() -> int:
     problems: list[str] = []
     for name, setup in setups.items():
         row = one(window, cfg, name, setup)
+        pt = bt[bt["setup"] == name]
+        row["n_p"] = int(len(pt))
+        row["r_p"] = round(float(pt["r_multiple"].sum()), 1) if len(pt) else 0.0
         rows[name] = row
         old = prev.get(name)
         delta_text = "—"
         delta_r = None
         new_trades = None
-        if old and prev_days == args.days:
-            new_trades = row["n"] - int(old.get("n", 0))
-            delta_r = round(row["r"] - float(old.get("r", 0.0)), 1)
+        if old and prev_days == args.days and "n_p" in old:
+            new_trades = row["n_p"] - int(old.get("n_p", 0))
+            delta_r = round(row["r_p"] - float(old.get("r_p", 0.0)), 1)
             delta_text = f"+{new_trades} сд., {delta_r:+.1f} R"
         state_text = status(row, delta_r, new_trades)
-        if state_text in ("В МИНУСЕ", "ухудшился"):
-            problems.append(f"{name}: {state_text.lower()} ({row['r']:+.1f} R, "
-                            f"{row['n']} сделок)")
+        if state_text.startswith("В МИНУСЕ") or state_text == "ухудшился":
+            problems.append(
+                f"{name}: {state_text.lower()} ({row['r_p']:+.1f} R в портфеле, "
+                f"{row['n_p']} сделок)"
+            )
         live_part = live.get(name)
         live_text = f"{live_part['n']} / {live_part['r']:+.1f}R" if live_part else "—"
         pf_text = "—" if row["pf"] is None else f"{row['pf']:.2f}"
@@ -236,16 +256,21 @@ def main() -> int:
             f"{row['r']:>+8.1f}{row['dd']:>7.1f}{journal.get(name, 0):>7}"
             f"   {delta_text:<26}{state_text}"
         )
+        displaced = row["n"] - row["n_p"]
+        extra = f", вытеснено {displaced}" if displaced > 0 else ""
+        print(
+            f"  {'':<20}└ в портфеле: {row['n_p']} сд., {row['r_p']:+.1f} R{extra}"
+        )
         if live_part:
-            print(f"  {'':<20}факт. сделки исполнителя: {live_text}")
+            print(f"  {'':<20}  факт. сделки исполнителя: {live_text}")
 
     print("  " + "-" * 92)
     if problems:
         print("\n  Требуют решения:")
         for line in problems:
             print(f"    - {line}")
-        print("  Отключать сетап стоит, если он в минусе и за 30, и за 90 дней "
-              "(проверьте --days 90).")
+        print("  Отключать сетап стоит, если он в минусе и за 30, и за 60 дней "
+              "(проверьте --days 60).")
     else:
         print("\n  Всё в плюсе: сетапы можно не трогать.")
 
