@@ -6,6 +6,7 @@
 
 Запуск:
     python run_monitor.py                # последние 30 дней
+    python run_monitor.py --days 15      # последние 15 дней (раннее предупреждение)
     python run_monitor.py --days 60      # последние 60 дней
     python run_monitor.py --since        # с сохранённой даты внедрения сетапа
     python run_monitor.py --since today  # с сегодняшнего дня
@@ -60,6 +61,7 @@ STATE_PATH = DATA_DIR / "monitor_last.json"
 ANCHOR_PATH = DATA_DIR / "monitor_anchor.json"
 MIN_TRADES = 10          # меньше — статистики нет
 WARN_TRADES = 5          # для сравнения с прошлой проверкой
+SHORT_WINDOW = 20        # окно короче — только раннее предупреждение
 
 
 def refresh_history(cfg: dict) -> pd.DataFrame:
@@ -291,6 +293,8 @@ def main() -> int:
           f"{bt['r_multiple'].sum():+.1f} R, просадка {dd_r(bt):.1f} R")
     if len(bt) < 30:
         print("  выборка маленькая — это точка отсчёта, выводы делать рано")
+    if window_key["type"] == "days" and args.days < SHORT_WINDOW:
+        print(f"  короткое окно ({args.days} дн.) — раннее предупреждение, не приговор")
     if journal:
         total = sum(journal.values())
         print(f"  сигналов в журнале за окно: {total}")
@@ -348,8 +352,11 @@ def main() -> int:
         print("\n  Требуют решения:")
         for line in problems:
             print(f"    - {line}")
-        print("  Отключать сетап стоит, если он в минусе и за 30, и за 60 дней "
-              "(проверьте --days 60).")
+        if window_key["type"] == "days" and args.days < SHORT_WINDOW:
+            print("  Короткое окно: это раннее предупреждение. Решение — по 30 и 60 дням.")
+        else:
+            print("  Отключать сетап стоит, если он в минусе и за 30, и за 60 дней "
+                  "(проверьте --days 60).")
     else:
         if all(r["n_p"] == 0 for r in rows.values()):
             print("\n  Сделок в этом окне пока нет — это точка отсчёта.")
