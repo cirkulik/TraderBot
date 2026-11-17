@@ -1,4 +1,4 @@
-{
+﻿{
   "symbol": "XAUUSD",
   "timeframe": "M5",
   "max_spread_points": 30,
@@ -179,7 +179,7 @@
     "terminal_path": "",
     "max_positions": 1,
     "max_signal_age_minutes": 3,
-    "max_entry_slip_points": 100,
+    "max_entry_slip_price": 1.0,
     "deviation_points": 20,
     "poll_seconds": 2,
     "state_path": "data/executor.csv",

@@ -91,7 +91,8 @@ class Executor:
         self.magic = int(ex.get("magic", 770001))
         self.max_positions = max(1, int(ex.get("max_positions", 1)))
         self.max_age = float(ex.get("max_signal_age_minutes", 3))
-        self.max_slip = float(ex.get("max_entry_slip_points", 100))
+        self._slip_price_cfg = ex.get("max_entry_slip_price")
+        self._slip_points_cfg = ex.get("max_entry_slip_points", 100)
         self.deviation = int(ex.get("deviation_points", 20))
         self.poll = float(ex.get("poll_seconds", 2))
         self.state_path = ROOT / str(ex.get("state_path", "data/executor.csv"))
@@ -104,7 +105,24 @@ class Executor:
         except OSError:
             self._cfg_mtime = 0.0
         self.info = ensure_symbol(self.symbol)
-        self.point = float(self.info.point)
+        self.point = float(self.info.point) or 0.01
+        self.slip_price = self._resolve_slip_price(self._slip_price_cfg, self._slip_points_cfg)
+
+    def _resolve_slip_price(self, price_value, points_value) -> float:
+        """Лимит ухода цены от сигнала — в цене (для XAUUSD это доллары).
+
+        Приоритет у `max_entry_slip_price`: его можно вписать при запуске.
+        Старый `max_entry_slip_points` остаётся для совместимости.
+        """
+        if price_value is not None:
+            try:
+                return max(0.0, float(price_value))
+            except (TypeError, ValueError):
+                pass
+        try:
+            return max(0.0, float(points_value) * self.point)
+        except (TypeError, ValueError):
+            return 100.0 * self.point
 
     # --- журнал и состояние ------------------------------------------------
     def log(self, message: str) -> None:
@@ -187,11 +205,11 @@ class Executor:
         # Сравниваем движение цены по bid с обеих сторон: так спред не мешает
         # отличить «цена ушла» от «просто широкий спред».
         ref = float(tick.bid)
-        slip_points = (ref - entry) / self.point if is_buy else (entry - ref) / self.point
-        if slip_points > self.max_slip:
+        slip_price = (ref - entry) if is_buy else (entry - ref)
+        if slip_price > self.slip_price + 1e-9:
             self.log(
-                f"{row['id']}: цена ушла на {slip_points:.0f} пт от сигнала "
-                f"({entry:.2f} -> {ref:.2f}), больше лимита {self.max_slip:.0f} — пропуск"
+                f"{row['id']}: цена ушла на {slip_price:.2f} $ от сигнала "
+                f"({entry:.2f} -> {ref:.2f}), больше лимита {self.slip_price:.2f} $ — пропуск"
             )
             return False
 
@@ -433,10 +451,13 @@ class Executor:
             new_lot = float(ex.get("lot", self.lot))
             new_max = max(1, int(ex.get("max_positions", self.max_positions)))
             new_age = float(ex.get("max_signal_age_minutes", self.max_age))
-            new_slip = float(ex.get("max_entry_slip_points", self.max_slip))
         except (TypeError, ValueError):
             self.log("в config.json некорректные execution.* — оставляю как было")
             return
+        new_slip = self._resolve_slip_price(
+            ex.get("max_entry_slip_price", self._slip_price_cfg),
+            ex.get("max_entry_slip_points", self._slip_points_cfg),
+        )
 
         if new_lot != self.lot:
             self.log(f"лот изменён: {self.lot:g} -> {new_lot:g}")
@@ -447,9 +468,13 @@ class Executor:
         if new_age != self.max_age:
             self.log(f"возраст сигнала: {self.max_age:g} -> {new_age:g} мин")
             self.max_age = new_age
-        if new_slip != self.max_slip:
-            self.log(f"лимит проскальзывания: {self.max_slip:g} -> {new_slip:g} пт")
-            self.max_slip = new_slip
+        if abs(new_slip - self.slip_price) > 1e-9:
+            self.log(
+                f"лимит ухода цены: {self.slip_price:.2f} $ -> {new_slip:.2f} $"
+            )
+            self.slip_price = new_slip
+            self._slip_price_cfg = ex.get("max_entry_slip_price", self._slip_price_cfg)
+            self._slip_points_cfg = ex.get("max_entry_slip_points", self._slip_points_cfg)
 
     def pending(self) -> list[pd.Series]:
         journal = self.journal()
@@ -496,6 +521,10 @@ class Executor:
         self.log(
             f"  лот: {self.lot} (фиксированный) | макс. позиций: {self.max_positions} | "
             f"magic: {self.magic}"
+        )
+        self.log(
+            f"  лимит ухода цены от сигнала: {self.slip_price:.2f} $ "
+            f"(дальше — пропуск сделки)"
         )
         self.log(f"  журнал сигналов: {self.journal_path}")
         self.log(f"  сигналы старше {self.max_age:g} мин игнорируются")
@@ -623,10 +652,51 @@ def remember_lot(lot: float) -> None:
         print(f"  Не удалось сохранить лот в config.json: {exc}")
 
 
+def ask_slip(default: float) -> float:
+    """Спрашивает лимит ухода цены (в $) в консоли. Enter — значение из config.json."""
+    try:
+        raw = input(
+            f"  Лимит ухода цены от сигнала, $ (Enter — оставить {default:g}): "
+        ).strip().replace(",", ".")
+    except EOFError:
+        return default
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"  Не понял «{raw}» — беру {default:g} $")
+        return default
+    if not (0.05 <= value <= 50.0):
+        print(f"  Лимит {value:g} $ вне диапазона 0.05–50 — беру {default:g} $")
+        return default
+    return round(value, 2)
+
+
+def remember_slip(value: float) -> None:
+    """Сохраняет лимит ухода цены в config.json как значение по умолчанию."""
+    try:
+        raw = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    node = raw.get("execution")
+    if not isinstance(node, dict):
+        node = {}
+        raw["execution"] = node
+    node["max_entry_slip_price"] = value
+    try:
+        DEFAULT_CONFIG_PATH.write_text(
+            json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"  Не удалось сохранить лимит в config.json: {exc}")
+
+
 def main(
     dry_run: bool = False,
     once: bool = False,
     lot: float | None = None,
+    slip: float | None = None,
     login: str | int | None = None,
     password: str | None = None,
     server: str | None = None,
@@ -660,6 +730,21 @@ def main(
         if abs(chosen - default_lot) > 1e-9:
             remember_lot(chosen)
             print(f"  Лот {chosen:g} сохранён в config.json как новый по умолчанию.")
+
+    if slip is not None:
+        cfg["execution"]["max_entry_slip_price"] = slip
+    else:
+        raw_default = cfg["execution"].get("max_entry_slip_price")
+        if raw_default is None:
+            # старый ключ в пунктах: для XAUUSD 1 пункт = 0.01 $
+            raw_default = float(cfg["execution"].get("max_entry_slip_points", 100)) * 0.01
+        default_slip = float(raw_default)
+        chosen_slip = ask_slip(default_slip)
+        cfg["execution"]["max_entry_slip_price"] = chosen_slip
+        if abs(chosen_slip - default_slip) > 1e-9:
+            remember_slip(chosen_slip)
+            print(f"  Лимит ухода цены {chosen_slip:g} $ сохранён в config.json.")
+
     try:
         connect(
             path=creds.get("path"),
