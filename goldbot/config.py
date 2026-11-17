@@ -261,7 +261,7 @@ def load_config(path: str | Path | None = None) -> dict:
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
     user_cfg: dict = {}
     if cfg_path.exists():
-        with cfg_path.open("r", encoding="utf-8") as fh:
+        with cfg_path.open("r", encoding="utf-8-sig") as fh:
             user_cfg = json.load(fh)
     return _apply_env(_deep_merge(DEFAULTS, user_cfg))
 
