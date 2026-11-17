@@ -320,7 +320,7 @@ def main() -> int:
         if old and "n_p" in old:
             new_trades = row["n_p"] - int(old.get("n_p", 0))
             delta_r = round(row["r_p"] - float(old.get("r_p", 0.0)), 1)
-            delta_text = f"+{new_trades} сд., {delta_r:+.1f} R"
+            delta_text = f"{new_trades:+d} сд., {delta_r:+.1f} R"
         state_text = status(row, delta_r, new_trades)
         if state_text.startswith("В МИНУСЕ") or state_text == "ухудшился":
             problems.append(

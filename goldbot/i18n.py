@@ -26,6 +26,7 @@ SETUP_LABELS = {
         "sell_noon": "Дневной откат (продажа в 12:00)",
         "sell_break": "Пробой вниз (продажа)",
         "swing_high": "Вход у хая по тренду (продажа)",
+        "pullback_cross": "Возврат выше EMA10 (покупка)",
         "short_rally_london": "Продажа после роста (Лондон)",
     },
     "az": {
@@ -36,6 +37,7 @@ SETUP_LABELS = {
         "sell_noon": "Günlük geri çəkilmə (12:00 satış)",
         "sell_break": "Aşağı qırılma (satış)",
         "swing_high": "Trenddə zirvədən satış",
+        "pullback_cross": "EMA10-dan yuxarı qayıdış (alış)",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
     },
 }
@@ -49,6 +51,7 @@ SESSION_LABELS = {
         "Вторая половина дня": "Günün ikinci yarısı",
         "Дневной откат": "Günlük geri çəkilmə",
         "Тренд вниз": "Aşağı trend",
+        "Тренд вверх": "Yüksəliş trendi",
         "торговая": "ticarət sessiyası",
     },
 }
@@ -93,6 +96,10 @@ REASONS = {
         "swing_high_zone": "Цена у максимума последних {bars} баров — локальный хай",
         "swing_high_reject": "Медвежий бар с верхней тенью {wick:.1f} ATR — отказ от роста",
         "swing_high_rsi": "RSI(14) = {rsi:.1f} — отскок был перекуплен",
+        "pc_cross_up": "Цена снова выше EMA{period} — откат вниз выкуплен",
+        "pc_cross_down": "Цена снова ниже EMA{period} — отскок вверх продан",
+        "pc_rsi_up": "RSI(14) на откате = {rsi:.1f} — перекупленности не было",
+        "pc_rsi_down": "RSI(14) на отскоке = {rsi:.1f} — перепроданности не было",
         "raw": "{text}",
     },
     "az": {
@@ -133,6 +140,10 @@ REASONS = {
         "swing_high_zone": "Qiymət son {bars} barın maksimumundadır — lokal zirvə",
         "swing_high_reject": "Üst kölgəsi {wick:.1f} ATR olan ayı barı — yüksəlişdən imtina",
         "swing_high_rsi": "RSI(14) = {rsi:.1f} — sıçrayış həddindən artıq alınmışdı",
+        "pc_cross_up": "Qiymət yenidən EMA{period}-dən yuxarıdadır — eniş geri çəkilməsi alınıb",
+        "pc_cross_down": "Qiymət yenidən EMA{period}-dən aşağıdadır — yüksəliş geri çəkilməsi satılıb",
+        "pc_rsi_up": "Geri çəkilmədə RSI(14) = {rsi:.1f} — həddindən artıq alış yox idi",
+        "pc_rsi_down": "Sıçrayışda RSI(14) = {rsi:.1f} — həddindən artıq satış yox idi",
         "raw": "{text}",
     },
 }

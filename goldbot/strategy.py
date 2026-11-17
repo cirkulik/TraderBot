@@ -709,6 +709,17 @@ def _reasons(
             reasons.append(("swing_high_reject", {"wick": wick}))
             if "min_rsi" in setup:
                 reasons.append(("swing_high_rsi", {"rsi": float(row["rsi"])}))
+        elif trigger == "pullback_cross":
+            period = int(setup.get("pc_ema", 20))
+            prev_rsi = float(df["rsi"].iloc[index - 1])
+            reasons.append(
+                ("pc_cross_up" if direction == "BUY" else "pc_cross_down",
+                 {"period": period})
+            )
+            reasons.append(
+                ("pc_rsi_up" if direction == "BUY" else "pc_rsi_down",
+                 {"rsi": prev_rsi})
+            )
         elif trigger == "trend_pullback":
             reasons.append(
                 raw(
