@@ -479,7 +479,9 @@ class TelegramBot:
 
 
 # ------------------------------------------------------------------ сообщения
-def format_signal_message(sig, lang: str = i18n.DEFAULT_LANG) -> str:
+def format_signal_message(
+    sig, lang: str = i18n.DEFAULT_LANG, stats: dict | None = None
+) -> str:
     """Сигнал для Telegram на нужном языке."""
     code = i18n.normalize_lang(lang)
     arrow = "🟢 BUY" if sig.direction == "BUY" else "🔴 SELL"
@@ -505,7 +507,30 @@ def format_signal_message(sig, lang: str = i18n.DEFAULT_LANG) -> str:
         bars=sig.time_exit_bars,
         hours=sig.time_exit_bars * 5 / 60,
     )
-    return head + "\n" + "\n".join(f"• {reason}" for reason in reasons)
+    lines = [head] + [f"• {reason}" for reason in reasons]
+
+    if stats:
+        block = []
+        for days in ("7", "14"):
+            item = (stats.get(days) or {}).get(sig.setup)
+            if item is None:
+                continue
+            if item.get("n"):
+                block.append(
+                    i18n.STATS_LINE[code].format(
+                        days=days,
+                        n=item["n"],
+                        wr=item.get("wr", 0.0),
+                        displaced=item.get("displaced", 0),
+                    )
+                )
+            else:
+                block.append(i18n.STATS_EMPTY[code].format(days=days))
+        if block:
+            lines.append("")
+            lines.extend(block)
+
+    return "\n".join(lines)
 
 
 def format_close_message(trade: dict, lang: str = i18n.DEFAULT_LANG) -> str:

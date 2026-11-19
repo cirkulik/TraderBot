@@ -24,6 +24,7 @@ from .data import (
     shutdown,
 )
 from .strategy import Signal, prepare, signal_at
+from .stats import setup_stats
 from .telegram import TelegramBot, format_close_message, format_signal_message
 
 JOURNAL_COLUMNS = [
@@ -416,6 +417,20 @@ def run_live(
         else:
             print("  Кросс-рынок: выключен")
         print(f"  Журнал: {journal_path}")
+
+        # Статистика для карточек: окна 7 и 14 дней. Считается из свежих баров
+        # при старте и обновляется раз в сутки, чтобы бот не тормозил.
+        stats_bars = int(cfg["live"].get("stats_bars", 12000))
+        stats: dict = {}
+        stats_day = None
+        try:
+            stats_df = get_closed_rates(symbol, tf, stats_bars)
+            stats = setup_stats(stats_df, cfg, xmarket=load_xmarket(cfg))
+            stats_day = pd.Timestamp(stats_df["time"].iloc[-1]).date()
+            print(f"  Статистика карточек: 7 и 14 дней ({len(stats_df)} баров)")
+        except Exception as exc:  # noqa: BLE001 - без статистики бот работает
+            print(f"  Статистика карточек недоступна: {exc}")
+
         telegram_cfg = cfg.get("telegram", {}) or {}
         if not telegram:
             print("  Telegram: выключен (--no-telegram) — сигналы только в журнал")
@@ -474,6 +489,14 @@ def run_live(
                         print(f"[{bar_time:%d.%m %H:%M}] старт: ждём следующий закрытый бар M5")
                         time.sleep(poll)
                         continue
+                    if stats_day != bar_time.date():
+                        try:
+                            stats_df = get_closed_rates(symbol, tf, stats_bars)
+                            stats = setup_stats(stats_df, cfg, xmarket=load_xmarket(cfg))
+                            stats_day = pd.Timestamp(stats_df["time"].iloc[-1]).date()
+                            print(f"[{bar_time:%d.%m %H:%M}] статистика карточек обновлена")
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"[{bar_time:%d.%m %H:%M}] статистика недоступна: {exc}")
                     xmarket = load_xmarket(cfg)
                     prepared = prepare(df, cfg, xmarket=xmarket)
                     tick = get_tick(symbol)
@@ -569,7 +592,7 @@ def run_live(
                                 journal.add(sig, offset)
                                 print(format_signal(sig, offset))
                                 bot.broadcast(
-                                    lambda lang: format_signal_message(sig, lang)
+                                    lambda lang: format_signal_message(sig, lang, stats)
                                 )
 
                 if once:

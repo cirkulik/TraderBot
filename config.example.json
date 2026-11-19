@@ -236,6 +236,7 @@
   "live": {
     "poll_seconds": 5,
     "history_bars": 5000,
+    "stats_bars": 12000,
     "journal_path": "data/signals.csv"
   },
   "cross_market": {

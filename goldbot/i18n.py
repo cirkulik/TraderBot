@@ -278,7 +278,6 @@ MESSAGES = {
 SIGNAL_TEMPLATE = {
     "ru": (
         "{arrow}  XAUUSD M5 — {label}\n"
-        "Бар: {bar} (время сервера)\n"
         "\n"
         "Вход: {entry:.2f}\n"
         "SL: {sl:.2f}  ({risk:.2f} $ по цене)\n"
@@ -291,7 +290,6 @@ SIGNAL_TEMPLATE = {
     ),
     "az": (
         "{arrow}  XAUUSD M5 — {label}\n"
-        "Bar: {bar} (server vaxtı)\n"
         "\n"
         "Giriş: {entry:.2f}\n"
         "SL: {sl:.2f}  ({risk:.2f} $ qiymətlə)\n"
@@ -302,6 +300,17 @@ SIGNAL_TEMPLATE = {
         "\n"
         "Səbəblər:"
     ),
+}
+
+# Строки статистики под сигналом: сделок / винрейт / вытеснено.
+STATS_LINE = {
+    "ru": "Статистика за {days} дней: {n} / {wr}% / вытеснено {displaced}",
+    "az": "{days} günlük statistika: {n} / {wr}% / {displaced} buraxıldı",
+}
+
+STATS_EMPTY = {
+    "ru": "Статистика за {days} дней: нет сделок",
+    "az": "{days} günlük statistika: əməliyyat yoxdur",
 }
 
 CLOSE_TEMPLATE = {

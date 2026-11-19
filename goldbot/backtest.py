@@ -273,8 +273,9 @@ def run_backtest(
     point: float = 0.01,
     entry_mode: str = "close",
     slippage_points: float = 0.0,
+    xmarket: dict[str, pd.DataFrame] | None = None,
 ) -> BacktestResult:
-    prepared = prepare(df, cfg)
+    prepared = prepare(df, cfg, xmarket=xmarket)
     return simulate(
         prepared,
         cfg,

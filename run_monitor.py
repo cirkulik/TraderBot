@@ -12,6 +12,7 @@
     python run_monitor.py --since today  # с сегодняшнего дня
     python run_monitor.py --since 2026-11-17
     python run_monitor.py --refresh      # докачать историю из MT5
+    python run_monitor.py --stats        # статистика 7/14 дней для карточек в TG
 
 Окно «с даты» удобно после смены набора сетапов: считается только то, что
 бот сделал после внедрения. У каждого окна свой снимок в
@@ -56,8 +57,10 @@ from goldbot.data import (
     load_history,
     shutdown,
 )
+from goldbot.stats import setup_stats
 
 STATE_PATH = DATA_DIR / "monitor_last.json"
+STATS_PATH = DATA_DIR / "setup_stats.json"
 ANCHOR_PATH = DATA_DIR / "monitor_anchor.json"
 MIN_TRADES = 10          # меньше — статистики нет
 WARN_TRADES = 5          # для сравнения с прошлой проверкой
@@ -225,6 +228,11 @@ def main() -> int:
     )
     parser.add_argument("--refresh", action="store_true", help="докачать историю из MT5")
     parser.add_argument("--no-save", action="store_true", help="не сохранять снимок")
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="только статистика 7/14 дней для карточек сигналов (пишет data/setup_stats.json)",
+    )
     args = parser.parse_args()
 
     cfg = load_config()
@@ -236,6 +244,27 @@ def main() -> int:
         return 1
 
     last_bar = df["time"].iloc[-1]
+
+    if args.stats:
+        stats = setup_stats(df, cfg, last_bar=last_bar)
+        payload = {
+            "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "last_bar": str(last_bar),
+            "windows": stats,
+        }
+        STATS_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        print(f"Статистика для карточек, бар {last_bar:%d.%m %H:%M}:")
+        for days, rows in stats.items():
+            print(f"  --- {days} дней: сделок / винрейт / вытеснено ---")
+            for name, v in rows.items():
+                print(
+                    f"    {name:<16} {v['n']:>2} / {v['wr']:>5.1f}% / {v['displaced']}"
+                )
+        print(f"\nСохранено: {STATS_PATH}")
+        return 0
+
     now_utc = pd.Timestamp(datetime.now(timezone.utc).replace(tzinfo=None))
     offset_h = int(round((last_bar - now_utc).total_seconds() / 3600))
 
