@@ -62,6 +62,7 @@ ANCHOR_PATH = DATA_DIR / "monitor_anchor.json"
 MIN_TRADES = 10          # меньше — статистики нет
 WARN_TRADES = 5          # для сравнения с прошлой проверкой
 SHORT_WINDOW = 20        # окно короче — только раннее предупреждение
+WARMUP_DAYS = 10         # история до окна, чтобы индикаторы успели сойтись
 
 
 def refresh_history(cfg: dict) -> pd.DataFrame:
@@ -99,17 +100,24 @@ def dd_r(trades: pd.DataFrame) -> float:
     return float((eq.cummax() - eq).max())
 
 
-def one(df: pd.DataFrame, cfg: dict, name: str, setup: dict) -> dict:
+def one(
+    df: pd.DataFrame, cfg: dict, name: str, setup: dict, since: pd.Timestamp
+) -> dict:
     cfg_try = {**cfg, "strategy": {**cfg["strategy"], "setups": {name: setup}}}
-    res = run_backtest(df, cfg_try)
-    t = trades_to_frame(res.trades)
+    t = trades_to_frame(run_backtest(df, cfg_try).trades)
+    if not t.empty and "r_multiple" in t.columns:
+        t = t[t["signal_time"] >= since]
+    else:
+        t = pd.DataFrame(columns=["r_multiple"])
     wins = int((t["r_multiple"] > 0).sum()) if len(t) else 0
-    pf = res.stats["profit_factor"] if len(t) else 0.0
+    gw = float(t.loc[t["r_multiple"] > 0, "r_multiple"].sum()) if len(t) else 0.0
+    gl = float(-t.loc[t["r_multiple"] < 0, "r_multiple"].sum()) if len(t) else 0.0
+    pf = round(gw / gl, 2) if gl else None
     return {
         "n": len(t),
         "wins": wins,
         "wr": round(100 * wins / len(t), 1) if len(t) else 0.0,
-        "pf": None if pf == float("inf") else round(pf, 2),
+        "pf": pf,
         "r": round(float(t["r_multiple"].sum()), 1) if len(t) else 0.0,
         "dd": round(dd_r(t), 1),
     }
@@ -258,14 +266,24 @@ def main() -> int:
         return 1
     span_days = int((last_bar - start_server).total_seconds() // 86400) + 1
 
+    # Индикаторы считаются с запасом истории до окна: иначе EMA200 на M15
+    # не успевает сойтись и фильтры старшего ТФ врут на первых днях окна.
+    warm = df[df["time"] >= start_server - pd.Timedelta(days=WARMUP_DAYS)].reset_index(drop=True)
+
     setups = {
         k: v for k, v in cfg["strategy"]["setups"].items() if v.get("enabled", True)
     }
     base_cfg = {**cfg, "strategy": {**cfg["strategy"], "setups": setups}}
-    base = run_backtest(window, base_cfg)
-    bt = trades_to_frame(base.trades)
-    if bt.empty:
-        bt = pd.DataFrame(columns=["setup", "r_multiple", "exit_time"])
+    bt = trades_to_frame(run_backtest(warm, base_cfg).trades)
+    if bt.empty or "r_multiple" not in bt.columns:
+        bt = pd.DataFrame(columns=["setup", "r_multiple", "exit_time", "signal_time"])
+    else:
+        bt = bt[bt["signal_time"] >= start_server]
+    port_wins = int((bt["r_multiple"] > 0).sum()) if len(bt) else 0
+    port_wr = round(100 * port_wins / len(bt), 1) if len(bt) else 0.0
+    port_gw = float(bt.loc[bt["r_multiple"] > 0, "r_multiple"].sum()) if len(bt) else 0.0
+    port_gl = float(-bt.loc[bt["r_multiple"] < 0, "r_multiple"].sum()) if len(bt) else 0.0
+    port_pf = port_gw / port_gl if port_gl else float("inf")
 
     journal = journal_counts(cfg, start_utc)
     live = executor_results(cfg)
@@ -288,8 +306,9 @@ def main() -> int:
     if prev_block is None:
         print("  первый замер по этому окну — сравнение появится со следующего запуска")
     print("=" * 96)
-    print(f"  портфель: {len(bt)} сделок, WR {base.stats['winrate']:.1f}%, "
-          f"PF {base.stats['profit_factor']:.2f}, "
+    pf_text = "—" if port_pf == float("inf") else f"{port_pf:.2f}"
+    print(f"  портфель: {len(bt)} сделок, WR {port_wr:.1f}%, "
+          f"PF {pf_text}, "
           f"{bt['r_multiple'].sum():+.1f} R, просадка {dd_r(bt):.1f} R")
     if len(bt) < 30:
         print("  выборка маленькая — это точка отсчёта, выводы делать рано")
@@ -312,7 +331,7 @@ def main() -> int:
     rows: dict[str, dict] = {}
     problems: list[str] = []
     for name, setup in setups.items():
-        row = one(window, cfg, name, setup)
+        row = one(warm, cfg, name, setup, start_server)
         pt = bt[bt["setup"] == name]
         row["n_p"] = int(len(pt))
         row["r_p"] = round(float(pt["r_multiple"].sum()), 1) if len(pt) else 0.0
@@ -371,8 +390,8 @@ def main() -> int:
             "last_bar": str(last_bar),
             "portfolio": {
                 "n": len(bt),
-                "wr": round(base.stats["winrate"], 1),
-                "pf": round(base.stats["profit_factor"], 2),
+                "wr": port_wr,
+                "pf": None if port_pf == float("inf") else round(port_pf, 2),
                 "r": round(float(bt["r_multiple"].sum()), 1),
             },
             "setups": rows,
