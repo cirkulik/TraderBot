@@ -369,7 +369,12 @@ def load_xmarket(cfg: dict) -> dict[str, pd.DataFrame]:
     return frames
 
 
-def run_live(cfg: dict | None = None, once: bool = False, terminal_path: str | None = None) -> None:
+def run_live(
+    cfg: dict | None = None,
+    once: bool = False,
+    terminal_path: str | None = None,
+    telegram: bool = True,
+) -> None:
     cfg = cfg or load_config()
     symbol = cfg["symbol"]
     tf = cfg["timeframe"]
@@ -378,6 +383,11 @@ def run_live(cfg: dict | None = None, once: bool = False, terminal_path: str | N
     journal_path = ROOT / cfg["live"].get("journal_path", "data/signals.csv")
     journal = SignalJournal(journal_path)
     bot = TelegramBot.from_config(cfg)
+    if not telegram:
+        # Сигналы пишутся только в журнал (его читает исполнитель).
+        # Нужно, когда у заказчика уже висит свой бот и дубли нельзя.
+        bot.enabled = False
+        bot.poll_commands = False
 
     connect(path=terminal_path)
     try:
@@ -407,7 +417,9 @@ def run_live(cfg: dict | None = None, once: bool = False, terminal_path: str | N
             print("  Кросс-рынок: выключен")
         print(f"  Журнал: {journal_path}")
         telegram_cfg = cfg.get("telegram", {}) or {}
-        if bot.enabled:
+        if not telegram:
+            print("  Telegram: выключен (--no-telegram) — сигналы только в журнал")
+        elif bot.enabled:
             username = bot.prepare()
             handle = f" @{username}" if username else ""
             print(f"  Telegram: включён{handle}, активных пользователей: {len(bot.store.active())}")

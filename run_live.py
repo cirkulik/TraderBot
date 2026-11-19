@@ -3,6 +3,7 @@
 Примеры:
     python run_live.py            # ждать сигналы постоянно
     python run_live.py --once     # проверить текущий закрытый бар и выйти
+    python run_live.py --no-telegram   # сигналы только в журнал, без Telegram
     python run_live.py --terminal "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
 """
 from __future__ import annotations
@@ -27,11 +28,23 @@ def main() -> int:
         default=None,
         help="путь к terminal64.exe, если терминал не находится автоматически",
     )
+    parser.add_argument(
+        "--no-telegram",
+        "--no-tg",
+        dest="no_telegram",
+        action="store_true",
+        help="не отправлять сигналы в Telegram (только журнал для исполнителя)",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     try:
-        run_live(cfg, once=args.once, terminal_path=args.terminal)
+        run_live(
+            cfg,
+            once=args.once,
+            terminal_path=args.terminal,
+            telegram=not args.no_telegram,
+        )
     except KeyboardInterrupt:
         return 0
     except Exception as exc:  # noqa: BLE001 - фиксируем причину остановки
