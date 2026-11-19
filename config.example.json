@@ -203,6 +203,27 @@
         "rr": 1.0,
         "time_exit_bars": 24,
         "breakeven_at_r": 0.0
+      },
+      "fade_late": {
+        "enabled": true,
+        "direction": "SELL",
+        "session_start_hour": 15,
+        "session_end_hour": 20,
+        "session_label": "Вечерняя сессия",
+        "trigger": "fade_break",
+        "break_bars": 12,
+        "sl_atr": 1.2,
+        "sl_lookback": 3,
+        "sl_buffer_atr": 0.1,
+        "max_sl_atr": 1.8,
+        "rr": 1.0,
+        "time_exit_bars": 24,
+        "breakeven_at_r": 0.0,
+        "xm": {
+          "series": "xag",
+          "mode": "ret1h",
+          "th": 0.0
+        }
       }
     }
   },

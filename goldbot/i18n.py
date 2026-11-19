@@ -28,6 +28,7 @@ SETUP_LABELS = {
         "swing_high": "Вход у хая по тренду (продажа)",
         "pullback_cross": "Возврат выше EMA10 (покупка)",
         "keltner": "Растяжение от EMA20 (канал Кельтнера)",
+        "fade_late": "Провал пробоя (вечер, продажа)",
         "short_rally_london": "Продажа после роста (Лондон)",
     },
     "az": {
@@ -40,6 +41,7 @@ SETUP_LABELS = {
         "swing_high": "Trenddə zirvədən satış",
         "pullback_cross": "EMA10-dan yuxarı qayıdış (alış)",
         "keltner": "EMA20-dən uzanma (Keltner kanalı)",
+        "fade_late": "Uğursuz qırılma (axşam, satış)",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
     },
 }
@@ -54,6 +56,7 @@ SESSION_LABELS = {
         "Дневной откат": "Günlük geri çəkilmə",
         "Тренд вниз": "Aşağı trend",
         "Тренд вверх": "Yüksəliş trendi",
+        "Вечерняя сессия": "Axşam sessiyası",
         "торговая": "ticarət sessiyası",
     },
 }
@@ -75,6 +78,8 @@ REASONS = {
         "stretch_above": "Цена выше EMA{period} на {dist:.1f} ATR — сильное отклонение",
         "breakout_high": "Пробой максимума за {bars} баров",
         "breakout_low": "Пробой минимума за {bars} баров",
+        "fade_break_high": "Ложный пробой максимума за {bars} баров — возврат внутрь диапазона",
+        "fade_break_low": "Ложный пробой минимума за {bars} баров — возврат внутрь диапазона",
         "atr": "ATR(14) = {atr:.2f} $ — волатильность учтена в SL/TP",
         "ema200_bull": "Цена выше EMA200 — глобальный тренд вверх",
         "ema200_bear": "Цена ниже EMA200 — глобальный тренд вниз",
@@ -123,6 +128,8 @@ REASONS = {
         "stretch_above": "Qiymət EMA{period}-dən {dist:.1f} ATR yuxarıda — güclü kənarlaşma",
         "breakout_high": "{bars} barın maksimumunun qırılması",
         "breakout_low": "{bars} barın minimumunun qırılması",
+        "fade_break_high": "{bars} barın maksimumunun uğursuz qırılması — diapazona qayıdış",
+        "fade_break_low": "{bars} barın minimumunun uğursuz qırılması — diapazona qayıdış",
         "atr": "ATR(14) = {atr:.2f} $ — volatillik SL/TP-də nəzərə alınıb",
         "ema200_bull": "Qiymət EMA200-dən yuxarıda — qlobal yüksəliş trendi",
         "ema200_bear": "Qiymət EMA200-dən aşağıda — qlobal eniş trendi",

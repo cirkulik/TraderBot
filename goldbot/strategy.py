@@ -758,9 +758,9 @@ def _reasons(
             )
         elif trigger == "fade_break":
             bars = int(setup.get("break_bars", 20))
-            what = "минимума" if direction == "BUY" else "максимума"
             reasons.append(
-                raw(f"Ложный пробой {what} за {bars} баров — возврат внутрь диапазона")
+                ("fade_break_high" if direction == "SELL" else "fade_break_low",
+                 {"bars": bars})
             )
         elif trigger == "rsi_trend":
             reasons.append(
