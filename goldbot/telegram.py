@@ -530,7 +530,7 @@ def _stats_block(sig, stats: dict | None, code: str) -> str:
             )
         else:
             block.append(i18n.STATS_EMPTY_VALUE[code])
-    return "".join(f"{line}\n" for line in block)
+    return "\n" + "".join(f"{line}\n" for line in block)
 
 
 def format_close_message(trade: dict, lang: str = i18n.DEFAULT_LANG) -> str:
