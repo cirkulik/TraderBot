@@ -278,6 +278,7 @@ MESSAGES = {
 SIGNAL_TEMPLATE = {
     "ru": (
         "{arrow}  XAUUSD M5 — {label}\n"
+        "{stats}"
         "\n"
         "Вход: {entry:.2f}\n"
         "SL: {sl:.2f}  ({risk:.2f} $ по цене)\n"
@@ -290,6 +291,7 @@ SIGNAL_TEMPLATE = {
     ),
     "az": (
         "{arrow}  XAUUSD M5 — {label}\n"
+        "{stats}"
         "\n"
         "Giriş: {entry:.2f}\n"
         "SL: {sl:.2f}  ({risk:.2f} $ qiymətlə)\n"
@@ -302,15 +304,20 @@ SIGNAL_TEMPLATE = {
     ),
 }
 
-# Строки статистики под сигналом: сделок / винрейт / вытеснено.
-STATS_LINE = {
-    "ru": "Статистика за {days} дней: {n} / {wr}% / вытеснено {displaced}",
-    "az": "{days} günlük statistika: {n} / {wr}% / {displaced} buraxıldı",
+# Статистика под заголовком: подпись строкой, числа следующей строкой.
+STATS_LABEL = {
+    "ru": "Статистика за {days} дней:",
+    "az": "{days} günlük statistika:",
 }
 
-STATS_EMPTY = {
-    "ru": "Статистика за {days} дней: нет сделок",
-    "az": "{days} günlük statistika: əməliyyat yoxdur",
+STATS_VALUE = {
+    "ru": "{n} / {wr}% / вытеснено {displaced}",
+    "az": "{n} / {wr}% / {displaced} buraxıldı",
+}
+
+STATS_EMPTY_VALUE = {
+    "ru": "нет сделок",
+    "az": "əməliyyat yoxdur",
 }
 
 CLOSE_TEMPLATE = {

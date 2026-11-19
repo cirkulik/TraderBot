@@ -495,7 +495,7 @@ def format_signal_message(
     head = i18n.SIGNAL_TEMPLATE[code].format(
         arrow=arrow,
         label=i18n.setup_label(sig.setup, code),
-        bar=f"{sig.time:%d.%m.%Y %H:%M}",
+        stats=_stats_block(sig, stats, code),
         entry=sig.entry,
         sl=sig.sl,
         tp=sig.tp,
@@ -507,30 +507,30 @@ def format_signal_message(
         bars=sig.time_exit_bars,
         hours=sig.time_exit_bars * 5 / 60,
     )
-    lines = [head] + [f"• {reason}" for reason in reasons]
+    return head + "\n" + "\n".join(f"• {reason}" for reason in reasons)
 
-    if stats:
-        block = []
-        for days in ("7", "14"):
-            item = (stats.get(days) or {}).get(sig.setup)
-            if item is None:
-                continue
-            if item.get("n"):
-                block.append(
-                    i18n.STATS_LINE[code].format(
-                        days=days,
-                        n=item["n"],
-                        wr=item.get("wr", 0.0),
-                        displaced=item.get("displaced", 0),
-                    )
+
+def _stats_block(sig, stats: dict | None, code: str) -> str:
+    """Две пары строк: подпись окна и под ней числа."""
+    if not stats:
+        return ""
+    block = []
+    for days in ("7", "14"):
+        item = (stats.get(days) or {}).get(sig.setup)
+        if item is None:
+            continue
+        block.append(i18n.STATS_LABEL[code].format(days=days))
+        if item.get("n"):
+            block.append(
+                i18n.STATS_VALUE[code].format(
+                    n=item["n"],
+                    wr=item.get("wr", 0.0),
+                    displaced=item.get("displaced", 0),
                 )
-            else:
-                block.append(i18n.STATS_EMPTY[code].format(days=days))
-        if block:
-            lines.append("")
-            lines.extend(block)
-
-    return "\n".join(lines)
+            )
+        else:
+            block.append(i18n.STATS_EMPTY_VALUE[code])
+    return "".join(f"{line}\n" for line in block)
 
 
 def format_close_message(trade: dict, lang: str = i18n.DEFAULT_LANG) -> str:
