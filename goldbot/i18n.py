@@ -29,6 +29,7 @@ SETUP_LABELS = {
         "pullback_cross": "Возврат выше EMA10 (покупка)",
         "keltner": "Растяжение от EMA20 (канал Кельтнера)",
         "fade_late": "Провал пробоя (вечер, продажа)",
+        "evening_break": "Вечерний пробой (продажа)",
         "short_rally_london": "Продажа после роста (Лондон)",
     },
     "az": {
@@ -42,6 +43,7 @@ SETUP_LABELS = {
         "pullback_cross": "EMA10-dan yuxarı qayıdış (alış)",
         "keltner": "EMA20-dən uzanma (Keltner kanalı)",
         "fade_late": "Uğursuz qırılma (axşam, satış)",
+        "evening_break": "Axşam qırılması (satış)",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
     },
 }
@@ -57,6 +59,7 @@ SESSION_LABELS = {
         "Тренд вниз": "Aşağı trend",
         "Тренд вверх": "Yüksəliş trendi",
         "Вечерняя сессия": "Axşam sessiyası",
+        "Вечерний пробой": "Axşam qırılması",
         "торговая": "ticarət sessiyası",
     },
 }

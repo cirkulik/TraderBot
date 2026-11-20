@@ -168,6 +168,28 @@ def _setup_condition(out: pd.DataFrame, setup: dict) -> pd.Series:
         else:
             level = out["low"].rolling(bars).min().shift(1)
             cond &= (out["close"] < level - buffer_atr * out["atr"]) & (out["close"] < out["open"])
+    elif trigger == "compress_break":
+        # Проторговка (сжатие) и пробой её границы в сторону тренда.
+        # Как описывал заказчик: 2-3 маленькие свечи против тренда, тени сверху
+        # (снятие ликвидности), затем пробой низа проторговки — продажа.
+        bars = int(setup.get("cb_bars", 8))
+        width_atr = float(setup.get("cb_width_atr", 1.6))
+        body_atr = float(setup.get("cb_body_atr", 0.7))
+        wick_atr = float(setup.get("cb_wick_atr", 0.0))
+        hi = out["high"].rolling(bars).max().shift(1)
+        lo = out["low"].rolling(bars).min().shift(1)
+        body_avg = (out["close"] - out["open"]).abs().rolling(bars).mean().shift(1)
+        upper_wick = out["high"] - out[["open", "close"]].max(axis=1)
+        lower_wick = out[["open", "close"]].min(axis=1) - out["low"]
+        tight = ((hi - lo) / out["atr"] <= width_atr) & (body_avg / out["atr"] <= body_atr)
+        if direction == "BUY":
+            wick_ok = (lower_wick / out["atr"]).rolling(bars).max().shift(1) >= wick_atr
+            cond &= tight & wick_ok
+            cond &= (out["close"] > hi) & (out["close"] > out["open"])
+        else:
+            wick_ok = (upper_wick / out["atr"]).rolling(bars).max().shift(1) >= wick_atr
+            cond &= tight & wick_ok
+            cond &= (out["close"] < lo) & (out["close"] < out["open"])
     elif trigger == "swing_high":
         # Вход у локального хая: цена подошла к максимуму последних N баров
         # и бар закрылся вниз с верхней тенью (отказ от роста).
@@ -739,6 +761,23 @@ def _reasons(
             bars = int(setup.get("breakout_bars", 20))
             reasons.append(
                 ("breakout_high" if direction == "BUY" else "breakout_low", {"bars": bars})
+            )
+        elif trigger == "compress_break":
+            bars = int(setup.get("cb_bars", 8))
+            minutes = bars * 5
+            reasons.append(
+                raw(
+                    f"Проторговка {minutes} мин в тренде вниз — пробой её минимума"
+                    if direction == "SELL"
+                    else f"Проторговка {minutes} мин в тренде вверх — пробой её максимума"
+                )
+            )
+            reasons.append(
+                raw(
+                    "Сжатие свечей и тени сверху — попытка роста не удалась"
+                    if direction == "SELL"
+                    else "Сжатие свечей и тени снизу — попытка падения не удалась"
+                )
             )
         elif trigger == "vwap":
             reasons.append(
