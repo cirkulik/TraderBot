@@ -191,8 +191,7 @@ MESSAGES = {
         "lang_set": "✅ Язык изменён: {name}",
         "group_added": (
             "✅ GoldBot подключён к группе.\n"
-            "Сюда будет приходить анализ XAUUSD M5: зоны, bias и график раз в час.\n"
-            "Торговые сигналы в группу не отправляются — они приходят в личные сообщения.\n\n"
+            "Сюда будет приходить анализ XAUUSD M5: зоны, bias и график раз в час.\n\n"
             "/lang — выбрать язык для этой группы\n"
             "/stop — остановить анализ в группе"
         ),
@@ -250,8 +249,7 @@ MESSAGES = {
         "lang_set": "✅ Dil dəyişdirildi: {name}",
         "group_added": (
             "✅ GoldBot qrupa qoşuldu.\n"
-            "Buraya XAUUSD M5 analizi gələcək: zonalar, bias və qrafik saatda bir dəfə.\n"
-            "Ticarət siqnalları qrupa göndərilmir — onlar şəxsi mesajlara gəlir.\n\n"
+            "Buraya XAUUSD M5 analizi gələcək: zonalar, bias və qrafik saatda bir dəfə.\n\n"
             "/lang — bu qrup üçün dil seç\n"
             "/stop — qrupda analizi dayandır"
         ),

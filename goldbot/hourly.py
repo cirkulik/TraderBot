@@ -1,6 +1,7 @@
 """Часовой отчёт: текст, картинка, отправка в Telegram."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,32 @@ import pandas as pd
 from . import i18n
 from .config import ROOT
 from .zones import build_report
+
+LAST_REPORT = ROOT / "data" / "hourly_last.json"
+
+
+def save_last_report(texts: dict[str, str], charts: dict[str, str], when) -> None:
+    """Кладёт последний отчёт на диск: кнопка языка берёт текст отсюда."""
+    payload = {
+        "time": when.strftime("%Y-%m-%d %H:%M:%S"),
+        "stamp": when.strftime("%Y%m%d%H%M"),
+        "texts": texts,
+        "charts": charts,
+    }
+    try:
+        LAST_REPORT.parent.mkdir(parents=True, exist_ok=True)
+        LAST_REPORT.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"[hourly] не сохранил последний отчёт: {exc}")
+
+
+def load_last_report() -> dict:
+    try:
+        return json.loads(LAST_REPORT.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
@@ -167,16 +194,27 @@ def send_report(
         print("[hourly] нет получателей")
         return report
 
-    cache: dict[str, tuple[str, Path | None]] = {}
+    langs = {user_lang for _, user_lang in recipients}
+    cache: dict[str, tuple[str, Path | None]] = {
+        lang: _prepare(report, lang, df, chart_dir, with_chart) for lang in langs
+    }
+    save_last_report(
+        texts={lang: text for lang, (text, _) in cache.items()},
+        charts={lang: str(img) for lang, (_, img) in cache.items() if img},
+        when=report["time"],
+    )
+
+    from .telegram import hourly_keyboard
+
     sent = 0
+    stamp = report["time"].strftime("%Y%m%d%H%M")
     for chat_id, user_lang in recipients:
-        if user_lang not in cache:
-            cache[user_lang] = _prepare(report, user_lang, df, chart_dir, with_chart)
         text, image_path = cache[user_lang]
+        keyboard = hourly_keyboard(user_lang, stamp)
         if image_path and image_path.exists():
-            ok = bot.send_photo(chat_id, image_path, caption=text)
+            ok = bot.send_photo(chat_id, image_path, caption=text, reply_markup=keyboard)
         else:
-            ok = bot.send(chat_id, text)
+            ok = bot.send(chat_id, text, reply_markup=keyboard)
         sent += 1 if ok else 0
         print(f"[hourly] {chat_id} ({user_lang}): {'ok' if ok else 'ошибка'}")
 

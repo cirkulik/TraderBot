@@ -44,6 +44,7 @@ def api_send_photo(
     path: str | Path,
     caption: str = "",
     http_timeout: float = 30.0,
+    reply_markup: str | None = None,
 ) -> dict:
     """Отправляет картинку через sendPhoto (multipart/form-data, только stdlib)."""
     file_path = Path(path)
@@ -62,6 +63,8 @@ def api_send_photo(
     field("chat_id", str(chat_id))
     if caption:
         field("caption", caption[:1000])
+    if reply_markup:
+        field("reply_markup", reply_markup)
     body.extend(
         f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
         f'filename="{file_path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode("utf-8")
@@ -89,9 +92,79 @@ def api_send_photo(
         return {"ok": False, "description": f"сеть: {exc}"}
 
 
+def api_edit_photo(
+    token: str,
+    chat_id: str,
+    message_id: int | str,
+    path: str | Path,
+    caption: str = "",
+    reply_markup: str | None = None,
+    http_timeout: float = 30.0,
+) -> dict:
+    """Меняет картинку и подпись у уже отправленного сообщения."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return {"ok": False, "description": f"нет файла: {file_path}"}
+
+    media = json.dumps(
+        {"type": "photo", "media": "attach://photo", "caption": caption[:1000]}
+    )
+    boundary = "----goldbot" + uuid.uuid4().hex
+    body = bytearray()
+
+    def field(name: str, value: str) -> None:
+        body.extend(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n".encode("utf-8")
+        )
+
+    field("chat_id", str(chat_id))
+    field("message_id", str(message_id))
+    field("media", media)
+    if reply_markup:
+        field("reply_markup", reply_markup)
+    body.extend(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
+        f'filename="{file_path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode("utf-8")
+    )
+    body.extend(file_path.read_bytes())
+    body.extend(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+
+    request = urllib.request.Request(
+        API_URL.format(token=token, method="editMessageMedia"),
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=http_timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        text = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = {"ok": False, "description": text or str(exc)}
+        payload.setdefault("ok", False)
+        return payload
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return {"ok": False, "description": f"сеть: {exc}"}
+
+
+def hourly_keyboard(current: str = "", stamp: str = "") -> str:
+    """Кнопки переключения языка под часовым отчётом."""
+    suffix = f":{stamp}" if stamp else ""
+    buttons = [
+        {
+            "text": ("• " if code == current else "") + label,
+            "callback_data": f"hourly:{code}{suffix}",
+        }
+        for code, label in i18n.LANGUAGES.items()
+    ]
+    return json.dumps({"inline_keyboard": [buttons]})
+
+
 class TelegramNotifier:
     """Отправка в один чат. Оставлено для telegram_setup.py."""
-
     def __init__(
         self,
         token: str = "",
@@ -187,17 +260,28 @@ class TelegramBot:
             return False
         return True
 
-    def send_photo(self, chat_id: str | int, path: str | Path, caption: str = "") -> bool:
+    def send_photo(
+        self,
+        chat_id: str | int,
+        path: str | Path,
+        caption: str = "",
+        reply_markup: str | None = None,
+    ) -> bool:
         """Отправляет картинку с подписью. При ошибке — только текст."""
         if not self.enabled:
             return False
         payload = api_send_photo(
-            self.token, str(chat_id), path, caption, http_timeout=self.timeout * 3
+            self.token,
+            str(chat_id),
+            path,
+            caption,
+            http_timeout=self.timeout * 3,
+            reply_markup=reply_markup,
         )
         if not payload.get("ok"):
             print(f"[telegram] фото не отправлено: {payload.get('description')}")
             if caption:
-                return self.send(chat_id, caption)
+                return self.send(chat_id, caption, reply_markup=reply_markup)
             return False
         return True
 
@@ -593,6 +677,10 @@ class TelegramBot:
         ):
             return
 
+        if data.startswith("hourly:"):
+            self._switch_hourly_lang(chat_id, message, data.split(":", 1)[1])
+            return
+
         if data.startswith("lang:"):
             old = self.store.get(chat_id) or {}
             had_lang = bool(old.get("lang"))
@@ -607,6 +695,53 @@ class TelegramBot:
                 self.send(chat_id, self._welcome_text(chat_id, lang), self._main_keyboard())
 
     # ---------------------------------------------------------------- утилиты
+    def _switch_hourly_lang(self, chat_id: str, message: dict, payload: str) -> None:
+        """Меняет язык уже отправленного часового отчёта (кнопка под фото)."""
+        from .hourly import load_last_report
+
+        code, _, stamp = payload.partition(":")
+        lang = i18n.normalize_lang(code)
+        cache = load_last_report()
+        if stamp and cache.get("stamp") and cache["stamp"] != stamp:
+            # Кнопка от старого отчёта — не подменяем цифры новыми.
+            return
+        text = (cache.get("texts") or {}).get(lang)
+        if not text:
+            return
+        chart = (cache.get("charts") or {}).get(lang)
+        message_id = message.get("message_id")
+        keyboard = hourly_keyboard(lang, cache.get("stamp") or stamp)
+
+        if message.get("photo") and chart and Path(chart).exists():
+            payload = api_edit_photo(
+                self.token, chat_id, message_id, chart, text, keyboard, self.timeout * 3
+            )
+            if payload.get("ok"):
+                return
+            print(f"[telegram] editMessageMedia: {payload.get('description')}")
+
+        if message.get("photo"):
+            api_call(
+                self.token,
+                "editMessageCaption",
+                http_timeout=self.timeout,
+                chat_id=chat_id,
+                message_id=message_id,
+                caption=text[:1000],
+                reply_markup=keyboard,
+            )
+        else:
+            api_call(
+                self.token,
+                "editMessageText",
+                http_timeout=self.timeout,
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text[:MAX_TEXT],
+                reply_markup=keyboard,
+                disable_web_page_preview="true",
+            )
+
     def _main_keyboard(self) -> str:
         """Постоянная клавиатура с кнопками Start / Stop / Lang."""
         return json.dumps(
