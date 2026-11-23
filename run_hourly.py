@@ -60,14 +60,21 @@ def run_once(cfg: dict, args: argparse.Namespace) -> None:
     if df.empty:
         print("[hourly] нет данных")
         return
-    lang = args.lang or (cfg.get("telegram", {}) or {}).get("default_lang", "ru")
+    hourly_cfg = cfg.get("hourly", {}) or {}
+    lang = (
+        args.lang
+        or hourly_cfg.get("lang")
+        or (cfg.get("telegram", {}) or {}).get("default_lang", "ru")
+    )
+    hours = args.hours if args.hours is not None else int(hourly_cfg.get("hours", 24))
     send_report(
         cfg,
         df,
         lang=lang,
-        hours=args.hours,
+        hours=hours,
         telegram=not args.no_telegram,
         chart_dir=args.chart_dir,
+        with_chart=bool(hourly_cfg.get("chart", True)),
     )
 
 
@@ -83,8 +90,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Часовой отчёт XAUUSD M5")
     parser.add_argument("--once", action="store_true", help="один отчёт и выход")
     parser.add_argument("--loop", action="store_true", help="отправлять каждый час")
-    parser.add_argument("--minute", type=int, default=1, help="минута часа для отправки")
-    parser.add_argument("--hours", type=int, default=24, help="окно анализа, часов")
+    parser.add_argument("--minute", type=int, default=None, help="минута часа для отправки")
+    parser.add_argument("--hours", type=int, default=None, help="окно анализа, часов")
     parser.add_argument("--lang", default=None, help="ru или az (по умолчанию из конфига)")
     parser.add_argument("--csv", default=None, help="взять данные из CSV вместо MT5")
     parser.add_argument("--chart-dir", default=None, help="куда сохранять картинки")
@@ -96,6 +103,9 @@ def main() -> None:
         args.once = True
 
     cfg = load_config(args.config)
+    hourly_cfg = cfg.get("hourly", {}) or {}
+    if args.minute is None:
+        args.minute = int(hourly_cfg.get("minute", 1))
 
     if args.once:
         run_once(cfg, args)

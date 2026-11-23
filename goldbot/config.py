@@ -191,6 +191,12 @@ DEFAULTS: dict[str, Any] = {
         "default_lang": "ru",
         "poll_commands": True,
     },
+    "hourly": {
+        "lang": "az",
+        "hours": 24,
+        "minute": 1,
+        "chart": True,
+    },
 }
 
 

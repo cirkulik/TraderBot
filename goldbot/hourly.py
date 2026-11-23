@@ -113,20 +113,22 @@ def send_report(
     hours: int = 24,
     telegram: bool = True,
     chart_dir: str | Path | None = None,
+    with_chart: bool = True,
 ) -> dict:
     """Считает отчёт, рисует картинку и отправляет. Возвращает данные отчёта."""
     report = build_report(df, hours=hours)
     text = build_text(report, lang)
 
     image_path = None
-    try:
-        from .chart import render_chart
+    if with_chart:
+        try:
+            from .chart import render_chart
 
-        out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
-        name = f"hourly_{report['time']:%Y%m%d_%H%M}.png"
-        image_path = render_chart(df, report, out_dir / name, lang=lang)
-    except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
-        print(f"[hourly] картинка не построена: {exc}")
+            out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
+            name = f"hourly_{report['time']:%Y%m%d_%H%M}_{lang}.png"
+            image_path = render_chart(df, report, out_dir / name, lang=lang)
+        except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
+            print(f"[hourly] картинка не построена: {exc}")
 
     if not telegram:
         print(text)
