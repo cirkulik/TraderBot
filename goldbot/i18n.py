@@ -406,6 +406,7 @@ def tp_note(lang: str, gap, mfe, exit_bar_peak=None) -> str:
 HOURLY = {
     "ru": {
         "title": "📊 GOLD M5 — разбор за {hours} ч",
+        "chart_hours": "· {hours} ч",
         "stamp": "{day} {time} · цена {price}",
         "bias_sell": "🔴 Bias: SELL",
         "bias_buy": "🟢 Bias: BUY",
@@ -434,6 +435,7 @@ HOURLY = {
     },
     "az": {
         "title": "📊 GOLD M5 — {hours} saatlıq icmal",
+        "chart_hours": "· {hours} saat",
         "stamp": "{day} {time} · qiymət {price}",
         "bias_sell": "🔴 Bias: SELL",
         "bias_buy": "🟢 Bias: BUY",

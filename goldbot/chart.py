@@ -178,7 +178,13 @@ def render_chart(
     bias = report["bias"]
     bias_color = SELL if bias == "SELL" else BUY if bias == "BUY" else MUTED
     draw.text((LEFT, 26), title, fill=TEXT, font=_font(24, bold=True), anchor="lm")
-    draw.text((LEFT + 150, 26), f"· {report['hours']} ч", fill=MUTED, font=_font(18), anchor="lm")
+    draw.text(
+        (LEFT + 150, 26),
+        i18n.hourly_text(lang, "chart_hours").format(hours=report["hours"]),
+        fill=MUTED,
+        font=_font(18),
+        anchor="lm",
+    )
     draw.text((LEFT + 250, 26), "Bias:", fill=MUTED, font=_font(18), anchor="lm")
     draw.text((LEFT + 300, 26), bias, fill=bias_color, font=_font(22, bold=True), anchor="lm")
 
