@@ -141,7 +141,8 @@ class SubscriberStore:
                 "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
                 (value[1:],),
             ).fetchone()
-        elif value.isdigit():
+        elif value.lstrip("-").isdigit():
+            # Отрицательный id — группа или канал.
             row = self._conn.execute(
                 "SELECT * FROM users WHERE chat_id = ?", (value,)
             ).fetchone()

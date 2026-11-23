@@ -202,7 +202,10 @@ class TelegramBot:
         return True
 
     def broadcast(self, render) -> int:
-        """Отправляет каждому активному подписчику текст на его языке."""
+        """Отправляет каждому активному подписчику текст на его языке.
+
+        Группы пропускаются: туда идёт только часовой разбор, не сигналы.
+        """
         if not self.enabled:
             return 0
         sent = 0
@@ -210,10 +213,17 @@ class TelegramBot:
             if not user.get("started"):
                 # Telegram не даёт писать тому, кто ни разу не запускал бота.
                 continue
+            if self.is_group_chat(user["chat_id"]):
+                continue
             lang = self._user_lang(user)
             if self.send(user["chat_id"], render(lang)):
                 sent += 1
         return sent
+
+    @staticmethod
+    def is_group_chat(chat_id: str | int) -> bool:
+        """Группы и каналы в Telegram имеют отрицательный id."""
+        return str(chat_id).startswith("-")
 
     def notify_admin(self, text: str, reply_markup: str | None = None) -> bool:
         if not self.admin_chat_id:
@@ -284,7 +294,7 @@ class TelegramBot:
             http_timeout=self.timeout,
             timeout=0,
             offset=offset or None,
-            allowed_updates=json.dumps(["message", "callback_query"]),
+            allowed_updates=json.dumps(["message", "callback_query", "my_chat_member"]),
         )
         if not payload.get("ok"):
             print(f"[telegram] getUpdates: {payload.get('description')}")
@@ -304,18 +314,72 @@ class TelegramBot:
         if "callback_query" in update:
             self._handle_callback(update["callback_query"])
             return
+        if "my_chat_member" in update:
+            self._handle_membership(update["my_chat_member"])
+            return
         message = update.get("message") or update.get("edited_message")
         if message:
             self._handle_message(message)
+
+    def _handle_membership(self, member: dict) -> None:
+        """Бота добавили в группу или убрали из неё.
+
+        Группу подключаем только если добавлял сам админ. Иначе сообщаем
+        админу и оставляем группу без доступа.
+        """
+        chat = member.get("chat") or {}
+        chat_id = str(chat.get("id") or "")
+        if not chat_id:
+            return
+        if (chat.get("type") or "") not in ("group", "supergroup"):
+            return
+
+        status = str((member.get("new_chat_member") or {}).get("status") or "")
+        actor = str((member.get("from") or {}).get("id") or "")
+        title = str(chat.get("title") or chat_id)
+
+        if status in ("left", "kicked"):
+            user = self.store.get(chat_id)
+            if user and user.get("status") == ACTIVE:
+                self.store.set_status(chat_id, BLOCKED)
+                self.notify_admin(f"Бот удалён из группы «{title}» — рассылка остановлена.")
+            return
+
+        if status not in ("member", "administrator", "creator"):
+            return
+
+        if actor != str(self.admin_chat_id):
+            self.notify_admin(
+                f"Бота добавили в группу «{title}» ({chat_id}), но добавлял не админ.\n"
+                f"Доступ не выдан. Если это ваша группа: /allow {chat_id}"
+            )
+            return
+
+        self.store.upsert(
+            chat_id,
+            name=title,
+            username=str(chat.get("username") or ""),
+            status=ACTIVE,
+            started=1,
+        )
+        lang = self._user_lang(self.store.get(chat_id) or {})
+        self.send(chat_id, i18n.t(lang, "group_added"), self._lang_keyboard())
+        self.notify_admin(
+            f"Группа «{title}» подключена — туда пойдёт только часовой разбор, "
+            f"сигналы остаются в личных сообщениях.\n"
+            f"Язык группы: /lang (сейчас {i18n.LANGUAGE_NAMES.get(lang, lang)})."
+        )
 
     def _handle_message(self, message: dict) -> None:
         chat = message.get("chat") or {}
         chat_id = str(chat.get("id") or "")
         if not chat_id or chat_id == "None":
             return
+        is_group = (chat.get("type") or "") in ("group", "supergroup")
         sender = message.get("from") or {}
         name = (
-            chat.get("first_name")
+            chat.get("title")
+            or chat.get("first_name")
             or sender.get("first_name")
             or chat.get("username")
             or chat_id
@@ -325,6 +389,10 @@ class TelegramBot:
 
         user = self.store.get(chat_id)
         if user is None:
+            if is_group:
+                # Незнакомую группу не записываем: доступ выдаётся только
+                # когда бота добавил админ (my_chat_member) или через /allow.
+                return
             is_admin = self._is_admin(chat_id)
             self.store.upsert(
                 chat_id,

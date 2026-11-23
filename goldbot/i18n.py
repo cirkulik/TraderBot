@@ -189,6 +189,13 @@ MESSAGES = {
         ),
         "paused": "⏸ Сигналы отключены. Отправьте /start, чтобы включить снова.",
         "lang_set": "✅ Язык изменён: {name}",
+        "group_added": (
+            "✅ GoldBot подключён к группе.\n"
+            "Сюда будет приходить только часовой разбор рынка (зоны, bias, график).\n"
+            "Торговые сигналы в группу не отправляются — они приходят в личные сообщения.\n\n"
+            "/lang — выбрать язык для этой группы\n"
+            "/stop — остановить разбор в группе"
+        ),
         "help": (
             "Команды:\n"
             "/start — включить сигналы\n"
@@ -241,6 +248,13 @@ MESSAGES = {
         ),
         "paused": "⏸ Siqnallar söndürüldü. Yenidən açmaq üçün /start göndərin.",
         "lang_set": "✅ Dil dəyişdirildi: {name}",
+        "group_added": (
+            "✅ GoldBot qrupa qoşuldu.\n"
+            "Buraya yalnız saatlıq bazar icmalı gələcək (zonalar, bias, qrafik).\n"
+            "Ticarət siqnalları qrupa göndərilmir — onlar şəxsi mesajlara gəlir.\n\n"
+            "/lang — bu qrup üçün dil seç\n"
+            "/stop — qrupda icmalı dayandır"
+        ),
         "help": (
             "Komandalar:\n"
             "/start — siqnalları aç\n"
