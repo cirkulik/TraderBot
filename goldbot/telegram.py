@@ -44,7 +44,6 @@ def api_send_photo(
     path: str | Path,
     caption: str = "",
     http_timeout: float = 30.0,
-    reply_markup: str | None = None,
 ) -> dict:
     """Отправляет картинку через sendPhoto (multipart/form-data, только stdlib)."""
     file_path = Path(path)
@@ -63,8 +62,6 @@ def api_send_photo(
     field("chat_id", str(chat_id))
     if caption:
         field("caption", caption[:1000])
-    if reply_markup:
-        field("reply_markup", reply_markup)
     body.extend(
         f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
         f'filename="{file_path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode("utf-8")
@@ -90,77 +87,6 @@ def api_send_photo(
         return payload
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         return {"ok": False, "description": f"сеть: {exc}"}
-
-
-def api_edit_photo(
-    token: str,
-    chat_id: str,
-    message_id: int | str,
-    path: str | Path,
-    caption: str = "",
-    reply_markup: str | None = None,
-    http_timeout: float = 30.0,
-) -> dict:
-    """Меняет картинку и подпись у уже отправленного сообщения."""
-    file_path = Path(path)
-    if not file_path.exists():
-        return {"ok": False, "description": f"нет файла: {file_path}"}
-
-    media = json.dumps(
-        {"type": "photo", "media": "attach://photo", "caption": caption[:1000]}
-    )
-    boundary = "----goldbot" + uuid.uuid4().hex
-    body = bytearray()
-
-    def field(name: str, value: str) -> None:
-        body.extend(
-            f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n".encode("utf-8")
-        )
-
-    field("chat_id", str(chat_id))
-    field("message_id", str(message_id))
-    field("media", media)
-    if reply_markup:
-        field("reply_markup", reply_markup)
-    body.extend(
-        f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
-        f'filename="{file_path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode("utf-8")
-    )
-    body.extend(file_path.read_bytes())
-    body.extend(f"\r\n--{boundary}--\r\n".encode("utf-8"))
-
-    request = urllib.request.Request(
-        API_URL.format(token=token, method="editMessageMedia"),
-        data=bytes(body),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=http_timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        text = exc.read().decode("utf-8", "replace")
-        try:
-            payload = json.loads(text)
-        except json.JSONDecodeError:
-            payload = {"ok": False, "description": text or str(exc)}
-        payload.setdefault("ok", False)
-        return payload
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        return {"ok": False, "description": f"сеть: {exc}"}
-
-
-def hourly_keyboard(current: str = "", stamp: str = "") -> str:
-    """Кнопки переключения языка под часовым отчётом."""
-    suffix = f":{stamp}" if stamp else ""
-    buttons = [
-        {
-            "text": ("• " if code == current else "") + label,
-            "callback_data": f"hourly:{code}{suffix}",
-        }
-        for code, label in i18n.LANGUAGES.items()
-    ]
-    return json.dumps({"inline_keyboard": [buttons]})
 
 
 class TelegramNotifier:
@@ -216,6 +142,7 @@ class TelegramBot:
         timeout: float = 10.0,
         default_lang: str = i18n.DEFAULT_LANG,
         poll_commands: bool = True,
+        hourly_lang: str = "",
     ):
         self.token = str(token or "").strip()
         self.admin_chat_id = str(admin_chat_id or "").strip()
@@ -224,11 +151,14 @@ class TelegramBot:
         self.default_lang = i18n.normalize_lang(default_lang)
         self.poll_commands = bool(poll_commands)
         self.enabled = bool(enabled) and bool(self.token)
+        # Язык каналов по умолчанию (у канала нет своего /lang — его задаёт админ).
+        self.hourly_lang = i18n.normalize_lang(hourly_lang or default_lang)
         self.username = ""
 
     @classmethod
     def from_config(cls, cfg: dict, store: SubscriberStore | None = None) -> "TelegramBot":
         params = cfg.get("telegram", {}) or {}
+        hourly = cfg.get("hourly", {}) or {}
         path = params.get("db_path") or "data/goldbot.db"
         if store is None:
             store = SubscriberStore(ROOT / path)
@@ -240,6 +170,7 @@ class TelegramBot:
             timeout=float(params.get("timeout_seconds", 10)),
             default_lang=params.get("default_lang", i18n.DEFAULT_LANG),
             poll_commands=bool(params.get("poll_commands", True)),
+            hourly_lang=hourly.get("lang", ""),
         )
 
     # ------------------------------------------------------------- отправка
@@ -260,28 +191,17 @@ class TelegramBot:
             return False
         return True
 
-    def send_photo(
-        self,
-        chat_id: str | int,
-        path: str | Path,
-        caption: str = "",
-        reply_markup: str | None = None,
-    ) -> bool:
+    def send_photo(self, chat_id: str | int, path: str | Path, caption: str = "") -> bool:
         """Отправляет картинку с подписью. При ошибке — только текст."""
         if not self.enabled:
             return False
         payload = api_send_photo(
-            self.token,
-            str(chat_id),
-            path,
-            caption,
-            http_timeout=self.timeout * 3,
-            reply_markup=reply_markup,
+            self.token, str(chat_id), path, caption, http_timeout=self.timeout * 3
         )
         if not payload.get("ok"):
             print(f"[telegram] фото не отправлено: {payload.get('description')}")
             if caption:
-                return self.send(chat_id, caption, reply_markup=reply_markup)
+                return self.send(chat_id, caption)
             return False
         return True
 
@@ -406,27 +326,27 @@ class TelegramBot:
             self._handle_message(message)
 
     def _handle_membership(self, member: dict) -> None:
-        """Бота добавили в группу или убрали из неё.
+        """Бота добавили в группу/канал или убрали оттуда.
 
-        Группу подключаем только если добавлял сам админ. Иначе сообщаем
-        админу и оставляем группу без доступа.
+        Подключаем только если добавлял сам админ. В канал ничего не пишем:
+        он должен получать лишь часовой анализ. Все настройки — в личке админа.
         """
         chat = member.get("chat") or {}
         chat_id = str(chat.get("id") or "")
-        if not chat_id:
-            return
-        if (chat.get("type") or "") not in ("group", "supergroup"):
+        kind = chat.get("type") or ""
+        if not chat_id or kind not in ("group", "supergroup", "channel"):
             return
 
         status = str((member.get("new_chat_member") or {}).get("status") or "")
         actor = str((member.get("from") or {}).get("id") or "")
         title = str(chat.get("title") or chat_id)
+        where = "канал" if kind == "channel" else "группу"
 
         if status in ("left", "kicked"):
             user = self.store.get(chat_id)
             if user and user.get("status") == ACTIVE:
                 self.store.set_status(chat_id, BLOCKED)
-                self.notify_admin(f"Бот удалён из группы «{title}» — рассылка остановлена.")
+                self.notify_admin(f"Бот удалён из {where} «{title}» — рассылка остановлена.")
             return
 
         if status not in ("member", "administrator", "creator"):
@@ -434,8 +354,8 @@ class TelegramBot:
 
         if actor != str(self.admin_chat_id):
             self.notify_admin(
-                f"Бота добавили в группу «{title}» ({chat_id}), но добавлял не админ.\n"
-                f"Доступ не выдан. Если это ваша группа: /allow {chat_id}"
+                f"Бота добавили в {where} «{title}» ({chat_id}), но добавлял не админ.\n"
+                f"Доступ не выдан. Если это ваш канал: /channel {chat_id} on"
             )
             return
 
@@ -447,7 +367,23 @@ class TelegramBot:
             started=1,
         )
         lang = self._user_lang(self.store.get(chat_id) or {})
-        self.send(chat_id, i18n.t(lang, "group_added"), self._lang_keyboard())
+
+        if kind == "channel":
+            if status != "administrator":
+                self.notify_admin(
+                    f"Канал «{title}» подключён, но бот не администратор — писать туда "
+                    f"он не сможет. Выдайте боту право публиковать сообщения."
+                )
+            else:
+                self.notify_admin(
+                    f"✅ Канал «{title}» подключён.\n"
+                    f"Раз в час туда будет уходить анализ XAUUSD M5.\n"
+                    f"Язык: {i18n.LANGUAGE_NAMES.get(lang, lang)}.\n"
+                    f"Сменить: /channel {chat_id} ru|az · список: /channels"
+                )
+            return
+
+        self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard())
         self.notify_admin(
             f"Группа «{title}» подключена — туда пойдёт только часовой разбор, "
             f"сигналы остаются в личных сообщениях.\n"
@@ -458,6 +394,9 @@ class TelegramBot:
         chat = message.get("chat") or {}
         chat_id = str(chat.get("id") or "")
         if not chat_id or chat_id == "None":
+            return
+        if (chat.get("type") or "") == "channel":
+            # В канал бот пишет только анализ. Никаких ответов на сообщения.
             return
         is_group = (chat.get("type") or "") in ("group", "supergroup")
         sender = message.get("from") or {}
@@ -522,7 +461,7 @@ class TelegramBot:
             self._cmd_stop(chat_id, user or {}, lang)
         elif command == "/lang":
             self.send(chat_id, i18n.t(lang, "choose_lang"), self._lang_keyboard())
-        elif command in ("/users", "/allow", "/deny", "/remove"):
+        elif command in ("/users", "/allow", "/deny", "/remove", "/channels", "/channel"):
             self._cmd_admin(command, arg, chat_id, lang)
         else:
             self.send(chat_id, i18n.t(lang, "help"))
@@ -569,6 +508,12 @@ class TelegramBot:
         if command == "/users":
             self._send_users(chat_id, lang)
             return
+        if command == "/channels":
+            self._send_channels(chat_id, lang)
+            return
+        if command == "/channel":
+            self._cmd_channel(arg, chat_id, lang)
+            return
         if not arg:
             self.send(chat_id, i18n.t(lang, "admin_need_ref", command=command))
             return
@@ -585,6 +530,47 @@ class TelegramBot:
             self._remove(ref, target, chat_id, lang)
         else:  # /deny
             self._revoke(ref, target, chat_id, lang)
+
+    def _send_channels(self, chat_id: str, lang: str) -> None:
+        """Список каналов и групп: id, название, язык, статус."""
+        rows = [u for u in self.store.users().values() if self.is_group_chat(u["chat_id"])]
+        if not rows:
+            self.send(chat_id, i18n.t(lang, "channels_empty"))
+            return
+        lines = [i18n.t(lang, "channels_title")]
+        for user in sorted(rows, key=lambda r: str(r.get("name") or "")):
+            mark = "✅" if user.get("status") == ACTIVE else "⏸"
+            code = self._user_lang(user)
+            lines.append(
+                f"{mark} {user.get('name') or user['chat_id']}\n"
+                f"    {user['chat_id']} · {code}"
+            )
+        lines.append("")
+        lines.append(i18n.t(lang, "channels_hint"))
+        self.send(chat_id, "\n".join(lines))
+
+    def _cmd_channel(self, arg: str, chat_id: str, lang: str) -> None:
+        """Настройка канала из лички админа: язык и вкл/выкл."""
+        parts = arg.split()
+        if len(parts) < 2:
+            self.send(chat_id, i18n.t(lang, "channel_usage"))
+            return
+        ref, value = parts[0], parts[1].lower()
+        target = self.store.find(ref)
+        if target is None or not self.is_group_chat(target["chat_id"]):
+            self.send(chat_id, i18n.t(lang, "channel_not_found", ref=ref))
+            return
+
+        name = target.get("name") or target["chat_id"]
+        if value in i18n.LANGUAGES:
+            self.store.upsert(target["chat_id"], lang=value)
+            self.send(chat_id, i18n.t(lang, "channel_lang_set", name=name, code=value))
+        elif value in ("on", "off"):
+            self.store.set_status(target["chat_id"], ACTIVE if value == "on" else PAUSED)
+            key = "channel_on" if value == "on" else "channel_off"
+            self.send(chat_id, i18n.t(lang, key, name=name))
+        else:
+            self.send(chat_id, i18n.t(lang, "channel_usage"))
 
     def _allow(self, ref: str, target: dict | None, by_chat_id: str, by_lang: str) -> None:
         known = target is not None
@@ -677,10 +663,6 @@ class TelegramBot:
         ):
             return
 
-        if data.startswith("hourly:"):
-            self._switch_hourly_lang(chat_id, message, data.split(":", 1)[1])
-            return
-
         if data.startswith("lang:"):
             old = self.store.get(chat_id) or {}
             had_lang = bool(old.get("lang"))
@@ -695,53 +677,6 @@ class TelegramBot:
                 self.send(chat_id, self._welcome_text(chat_id, lang), self._main_keyboard())
 
     # ---------------------------------------------------------------- утилиты
-    def _switch_hourly_lang(self, chat_id: str, message: dict, payload: str) -> None:
-        """Меняет язык уже отправленного часового отчёта (кнопка под фото)."""
-        from .hourly import load_last_report
-
-        code, _, stamp = payload.partition(":")
-        lang = i18n.normalize_lang(code)
-        cache = load_last_report()
-        if stamp and cache.get("stamp") and cache["stamp"] != stamp:
-            # Кнопка от старого отчёта — не подменяем цифры новыми.
-            return
-        text = (cache.get("texts") or {}).get(lang)
-        if not text:
-            return
-        chart = (cache.get("charts") or {}).get(lang)
-        message_id = message.get("message_id")
-        keyboard = hourly_keyboard(lang, cache.get("stamp") or stamp)
-
-        if message.get("photo") and chart and Path(chart).exists():
-            payload = api_edit_photo(
-                self.token, chat_id, message_id, chart, text, keyboard, self.timeout * 3
-            )
-            if payload.get("ok"):
-                return
-            print(f"[telegram] editMessageMedia: {payload.get('description')}")
-
-        if message.get("photo"):
-            api_call(
-                self.token,
-                "editMessageCaption",
-                http_timeout=self.timeout,
-                chat_id=chat_id,
-                message_id=message_id,
-                caption=text[:1000],
-                reply_markup=keyboard,
-            )
-        else:
-            api_call(
-                self.token,
-                "editMessageText",
-                http_timeout=self.timeout,
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text[:MAX_TEXT],
-                reply_markup=keyboard,
-                disable_web_page_preview="true",
-            )
-
     def _main_keyboard(self) -> str:
         """Постоянная клавиатура с кнопками Start / Stop / Lang."""
         return json.dumps(
@@ -776,7 +711,11 @@ class TelegramBot:
         return self._user_lang(user or {})
 
     def _user_lang(self, user: dict) -> str:
-        return i18n.normalize_lang(user.get("lang") or self.default_lang)
+        lang = user.get("lang")
+        if not lang and self.is_group_chat(user.get("chat_id") or ""):
+            # У канала/группы своего /lang нет — берём язык отчёта.
+            return self.hourly_lang
+        return i18n.normalize_lang(lang or self.default_lang)
 
 
 # ------------------------------------------------------------------ сообщения

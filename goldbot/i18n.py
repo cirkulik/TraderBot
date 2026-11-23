@@ -185,6 +185,9 @@ MESSAGES = {
             "/allow <id|@username> — выдать доступ\n"
             "/deny <id|@username> — отозвать доступ\n"
             "/remove <id|@username> — удалить\n"
+            "/channels — список каналов\n"
+            "/channel <id> ru|az — язык канала\n"
+            "/channel <id> on|off — вкл/выкл канал\n"
             "/lang — сменить язык"
         ),
         "paused": "⏸ Сигналы отключены. Отправьте /start, чтобы включить снова.",
@@ -203,6 +206,20 @@ MESSAGES = {
         ),
         "not_admin": "Эта команда только для администратора.",
         "admin_no_stop": "Администратор всегда получает сигналы — отключить себя нельзя.",
+        "channels_title": "📡 Каналы и группы:",
+        "channels_empty": (
+            "Каналы не подключены.\n"
+            "Добавьте бота в канал как администратора — он появится здесь."
+        ),
+        "channels_hint": (
+            "/channel <id> ru|az — язык канала\n"
+            "/channel <id> on|off — включить или остановить"
+        ),
+        "channel_usage": "Формат: /channel <id> ru|az или /channel <id> on|off",
+        "channel_not_found": "Канал {ref} не найден. Список: /channels",
+        "channel_lang_set": "✅ «{name}»: язык {code}",
+        "channel_on": "✅ «{name}»: рассылка включена",
+        "channel_off": "⏸ «{name}»: рассылка остановлена",
         "startup_title": "🤖 GoldBot запущен",
         "startup_setups": "XAUUSD M5, сетапы: {setups}",
         "startup_wait": "Ждём сигналы: 09:00–18:00 (время сервера).",
@@ -243,6 +260,9 @@ MESSAGES = {
             "/allow <id|@username> — giriş ver\n"
             "/deny <id|@username> — girişi ləğv et\n"
             "/remove <id|@username> — sil\n"
+            "/channels — kanalların siyahısı\n"
+            "/channel <id> ru|az — kanalın dili\n"
+            "/channel <id> on|off — kanalı aç/bağla\n"
             "/lang — dili dəyiş"
         ),
         "paused": "⏸ Siqnallar söndürüldü. Yenidən açmaq üçün /start göndərin.",
@@ -261,6 +281,20 @@ MESSAGES = {
         ),
         "not_admin": "Bu komanda yalnız administrator üçündür.",
         "admin_no_stop": "Administrator həmişə siqnal alır — özünü söndürə bilməz.",
+        "channels_title": "📡 Kanallar və qruplar:",
+        "channels_empty": (
+            "Kanal qoşulmayıb.\n"
+            "Botu kanala administrator kimi əlavə edin — burada görünəcək."
+        ),
+        "channels_hint": (
+            "/channel <id> ru|az — kanalın dili\n"
+            "/channel <id> on|off — aç və ya dayandır"
+        ),
+        "channel_usage": "Format: /channel <id> ru|az və ya /channel <id> on|off",
+        "channel_not_found": "Kanal {ref} tapılmadı. Siyahı: /channels",
+        "channel_lang_set": "✅ «{name}»: dil {code}",
+        "channel_on": "✅ «{name}»: yayım açıldı",
+        "channel_off": "⏸ «{name}»: yayım dayandırıldı",
         "startup_title": "🤖 GoldBot işə salındı",
         "startup_setups": "XAUUSD M5, setaplar: {setups}",
         "startup_wait": "Siqnalları gözləyirik: 09:00–18:00 (server vaxtı).",
