@@ -298,5 +298,11 @@
     "db_path": "data/goldbot.db",
     "default_lang": "ru",
     "poll_commands": true
+  },
+  "hourly": {
+    "lang": "az",
+    "hours": 24,
+    "minute": 1,
+    "chart": true
   }
 }
