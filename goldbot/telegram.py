@@ -449,6 +449,12 @@ class TelegramBot:
             self.send(chat_id, i18n.t(lang, "choose_lang"), self._lang_keyboard())
             return
 
+        if self.is_group_chat(chat_id):
+            if user.get("status") == PAUSED:
+                self.store.set_status(chat_id, ACTIVE)
+            self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard())
+            return
+
         if self._is_admin(chat_id):
             self.send(chat_id, i18n.t(lang, "welcome_admin"), self._main_keyboard())
             return
@@ -456,6 +462,14 @@ class TelegramBot:
         if user.get("status") == PAUSED:
             self.store.set_status(chat_id, ACTIVE)
         self.send(chat_id, i18n.t(lang, "welcome"), self._main_keyboard())
+
+    def _welcome_text(self, chat_id: str, lang: str) -> str:
+        """Приветствие зависит от того, группа это или личный чат."""
+        if self.is_group_chat(chat_id):
+            return i18n.t(lang, "group_added")
+        if self._is_admin(chat_id):
+            return i18n.t(lang, "welcome_admin")
+        return i18n.t(lang, "welcome")
 
     def _cmd_stop(self, chat_id: str, user: dict, lang: str) -> None:
         if self._is_admin(chat_id):
@@ -590,10 +604,7 @@ class TelegramBot:
                 self._main_keyboard(),
             )
             if not had_lang:
-                if self._is_admin(chat_id):
-                    self.send(chat_id, i18n.t(lang, "welcome_admin"), self._main_keyboard())
-                else:
-                    self.send(chat_id, i18n.t(lang, "welcome"), self._main_keyboard())
+                self.send(chat_id, self._welcome_text(chat_id, lang), self._main_keyboard())
 
     # ---------------------------------------------------------------- утилиты
     def _main_keyboard(self) -> str:
