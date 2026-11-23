@@ -607,10 +607,17 @@ python run_hourly.py --once --no-telegram   # проверить в консол
 python run_hourly.py --once                 # отправить один отчёт
 python run_hourly.py --loop                 # каждый час, в :01
 python run_hourly.py --loop --minute 5      # в :05
+python run_hourly.py --once --to admin      # только в чат админа
 ```
 
-Флаги: `--hours 24` (окно), `--lang ru|az`, `--csv data/XAUUSD_M5.csv`
-(без MT5), `--chart-dir` (куда сохранять картинки).
+Флаги: `--hours 24` (окно), `--lang ru|az`, `--to all|admin`, `--csv
+data/XAUUSD_M5.csv` (без MT5), `--chart-dir` (куда сохранять картинки).
+
+**Кому и на каком языке.** По умолчанию (`to: "all"`) отчёт уходит каждому
+активному подписчику на его языке — у кого выбран az, тот получает
+азербайджанский текст и азербайджанскую картинку, у кого ru — русские.
+Картинка рисуется один раз на язык, а не на человека. `--to admin` —
+только в чат из `telegram.chat_id`, на языке `hourly.lang`.
 
 Что внутри:
 

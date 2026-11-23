@@ -224,6 +224,26 @@ class TelegramBot:
         """Язык администратора (для стартового сообщения и ответов)."""
         return self._admin_lang()
 
+    def active_recipients(self) -> list[tuple[str, str]]:
+        """[(chat_id, lang)] — все, кому бот имеет право писать.
+
+        Подписчики, которые ни разу не нажимали Start, пропускаются: Telegram
+        не даёт им писать. Админ добавляется, даже если его нет в базе.
+        """
+        out: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for user in self.store.active():
+            chat_id = str(user.get("chat_id") or "")
+            if not chat_id or chat_id == "None" or chat_id in seen:
+                continue
+            if not user.get("started"):
+                continue
+            seen.add(chat_id)
+            out.append((chat_id, self._user_lang(user)))
+        if self.admin_chat_id and self.admin_chat_id not in seen:
+            out.append((self.admin_chat_id, self._admin_lang()))
+        return out
+
     # ------------------------------------------------------------- настройка
     def prepare(self) -> str:
         """Снимает вебхук (иначе getUpdates не работает) и узнаёт username бота."""

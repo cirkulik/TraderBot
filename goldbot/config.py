@@ -196,6 +196,7 @@ DEFAULTS: dict[str, Any] = {
         "hours": 24,
         "minute": 1,
         "chart": True,
+        "to": "all",
     },
 }
 

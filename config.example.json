@@ -303,6 +303,7 @@
     "lang": "az",
     "hours": 24,
     "minute": 1,
-    "chart": true
+    "chart": true,
+    "to": "all"
   }
 }

@@ -67,6 +67,7 @@ def run_once(cfg: dict, args: argparse.Namespace) -> None:
         or (cfg.get("telegram", {}) or {}).get("default_lang", "ru")
     )
     hours = args.hours if args.hours is not None else int(hourly_cfg.get("hours", 24))
+    to = args.to or str(hourly_cfg.get("to", "all"))
     send_report(
         cfg,
         df,
@@ -75,6 +76,7 @@ def run_once(cfg: dict, args: argparse.Namespace) -> None:
         telegram=not args.no_telegram,
         chart_dir=args.chart_dir,
         with_chart=bool(hourly_cfg.get("chart", True)),
+        to=to,
     )
 
 
@@ -93,6 +95,12 @@ def main() -> None:
     parser.add_argument("--minute", type=int, default=None, help="минута часа для отправки")
     parser.add_argument("--hours", type=int, default=None, help="окно анализа, часов")
     parser.add_argument("--lang", default=None, help="ru или az (по умолчанию из конфига)")
+    parser.add_argument(
+        "--to",
+        default=None,
+        choices=("all", "admin"),
+        help="all — каждому подписчику на его языке, admin — только в чат админа",
+    )
     parser.add_argument("--csv", default=None, help="взять данные из CSV вместо MT5")
     parser.add_argument("--chart-dir", default=None, help="куда сохранять картинки")
     parser.add_argument("--no-telegram", action="store_true", help="не отправлять в Telegram")

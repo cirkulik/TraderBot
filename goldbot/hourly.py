@@ -106,20 +106,16 @@ def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
     return "\n".join(lines)
 
 
-def send_report(
-    cfg: dict,
+def _prepare(
+    report: dict,
+    lang: str,
     df: pd.DataFrame,
-    lang: str = i18n.DEFAULT_LANG,
-    hours: int = 24,
-    telegram: bool = True,
-    chart_dir: str | Path | None = None,
-    with_chart: bool = True,
-) -> dict:
-    """Считает отчёт, рисует картинку и отправляет. Возвращает данные отчёта."""
-    report = build_report(df, hours=hours)
+    chart_dir: str | Path | None,
+    with_chart: bool,
+) -> tuple[str, Path | None]:
+    """Текст и картинка на одном языке."""
     text = build_text(report, lang)
-
-    image_path = None
+    image_path: Path | None = None
     if with_chart:
         try:
             from .chart import render_chart
@@ -129,8 +125,24 @@ def send_report(
             image_path = render_chart(df, report, out_dir / name, lang=lang)
         except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
             print(f"[hourly] картинка не построена: {exc}")
+    return text, image_path
+
+
+def send_report(
+    cfg: dict,
+    df: pd.DataFrame,
+    lang: str = i18n.DEFAULT_LANG,
+    hours: int = 24,
+    telegram: bool = True,
+    chart_dir: str | Path | None = None,
+    with_chart: bool = True,
+    to: str = "all",
+) -> dict:
+    """Считает отчёт и отправляет. `to="all"` — каждому на его языке."""
+    report = build_report(df, hours=hours)
 
     if not telegram:
+        text, image_path = _prepare(report, lang, df, chart_dir, with_chart)
         print(text)
         if image_path:
             print(f"\n[картинка] {image_path}")
@@ -141,18 +153,32 @@ def send_report(
     bot = TelegramBot.from_config(cfg)
     if not bot.enabled:
         print("[hourly] Telegram выключен")
-        print(text)
+        print(build_text(report, lang))
         return report
 
-    chat_id = bot.admin_chat_id
-    if not chat_id:
-        print("[hourly] не задан chat_id")
-        print(text)
-        return report
-
-    if image_path and image_path.exists():
-        ok = bot.send_photo(chat_id, image_path, caption=text)
+    if to == "admin":
+        recipients = [(bot.admin_chat_id, lang)] if bot.admin_chat_id else []
     else:
-        ok = bot.send(chat_id, text)
-    print(f"[hourly] отправлено: {ok}")
+        recipients = bot.active_recipients()
+        if not recipients and bot.admin_chat_id:
+            recipients = [(bot.admin_chat_id, lang)]
+
+    if not recipients:
+        print("[hourly] нет получателей")
+        return report
+
+    cache: dict[str, tuple[str, Path | None]] = {}
+    sent = 0
+    for chat_id, user_lang in recipients:
+        if user_lang not in cache:
+            cache[user_lang] = _prepare(report, user_lang, df, chart_dir, with_chart)
+        text, image_path = cache[user_lang]
+        if image_path and image_path.exists():
+            ok = bot.send_photo(chat_id, image_path, caption=text)
+        else:
+            ok = bot.send(chat_id, text)
+        sent += 1 if ok else 0
+        print(f"[hourly] {chat_id} ({user_lang}): {'ok' if ok else 'ошибка'}")
+
+    print(f"[hourly] отправлено {sent} из {len(recipients)}")
     return report
