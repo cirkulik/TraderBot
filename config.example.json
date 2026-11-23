@@ -234,7 +234,6 @@
         "trigger": "breakout",
         "breakout_bars": 12,
         "breakout_buffer_atr": 0.0,
-        "mtf_trend": 15,
         "sl_atr": 1.2,
         "sl_lookback": 3,
         "sl_buffer_atr": 0.1,
