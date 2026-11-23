@@ -400,3 +400,71 @@ def tp_note(lang: str, gap, mfe, exit_bar_peak=None) -> str:
     except (TypeError, ValueError):
         return ""
     return t(lang, "note_pierce", pierce=-gap, peak=peak)
+
+
+# Часовой отчёт: зоны, bias, план. Это разбор, а не сигнал.
+HOURLY = {
+    "ru": {
+        "title": "📊 GOLD M5 — разбор за {hours} ч",
+        "stamp": "{day} {time} · цена {price}",
+        "bias_sell": "🔴 Bias: SELL",
+        "bias_buy": "🟢 Bias: BUY",
+        "bias_flat": "⚪ Bias: нет тренда",
+        "plan_sell": "Цена под контролем продавцов. План: ждать реакцию на верхние зоны и искать SELL.",
+        "plan_buy": "Цена под контролем покупателей. План: ждать реакцию на нижние зоны и искать BUY.",
+        "plan_flat": "Тренда нет. План: работать от границ диапазона, без спешки.",
+        "range": "Диапазон: {low} – {high} ({span})",
+        "change": "Изменение: {change} ({pct}%)",
+        "zones_sell": "Зоны SELL (сверху вниз):",
+        "zones_buy": "Зоны BUY (снизу вверх):",
+        "zone": "• {price} — {strength}, {touches} кас.",
+        "weak": "слабая",
+        "medium": "средняя",
+        "strong": "сильная",
+        "strongest": "сильнейшая",
+        "decision": " (точка решения)",
+        "nearest_up": "Ближайшая сверху: {price} ({dist})",
+        "nearest_down": "Ближайшая снизу: {price} ({dist})",
+        "trend": "Тренд: M5 {m5}, M15 {m15}, H1 {h1}",
+        "up": "↑",
+        "down": "↓",
+        "flat": "→",
+        "footer": "ATR(14) {atr} $ · ADX M15 {adx}",
+        "note": "Разбор уровней, не сигнал.",
+    },
+    "az": {
+        "title": "📊 GOLD M5 — {hours} saatlıq icmal",
+        "stamp": "{day} {time} · qiymət {price}",
+        "bias_sell": "🔴 Bias: SELL",
+        "bias_buy": "🟢 Bias: BUY",
+        "bias_flat": "⚪ Bias: trend yoxdur",
+        "plan_sell": "Qiymət satıcıların nəzarətindədir. Plan: yuxarı zonalara reaksiyanı gözlə və SELL axtar.",
+        "plan_buy": "Qiymət alıcıların nəzarətindədir. Plan: aşağı zonalara reaksiyanı gözlə və BUY axtar.",
+        "plan_flat": "Trend yoxdur. Plan: diapazon sərhədlərindən işlə, tələsmədən.",
+        "range": "Diapazon: {low} – {high} ({span})",
+        "change": "Dəyişmə: {change} ({pct}%)",
+        "zones_sell": "SELL zonaları (yuxarıdan aşağı):",
+        "zones_buy": "BUY zonaları (aşağıdan yuxarı):",
+        "zone": "• {price} — {strength}, {touches} toxunuş",
+        "weak": "zəif",
+        "medium": "orta",
+        "strong": "güclü",
+        "strongest": "ən güclü",
+        "decision": " (qərar nöqtəsi)",
+        "nearest_up": "Ən yaxın yuxarı: {price} ({dist})",
+        "nearest_down": "Ən yaxın aşağı: {price} ({dist})",
+        "trend": "Trend: M5 {m5}, M15 {m15}, H1 {h1}",
+        "up": "↑",
+        "down": "↓",
+        "flat": "→",
+        "footer": "ATR(14) {atr} $ · ADX M15 {adx}",
+        "note": "Səviyyələrin icmalı, siqnal deyil.",
+    },
+}
+
+
+def hourly_text(lang: str, key: str) -> str:
+    """Текст часового отчёта на нужном языке."""
+    return HOURLY.get(lang, HOURLY[DEFAULT_LANG]).get(
+        key, HOURLY[DEFAULT_LANG].get(key, key)
+    )

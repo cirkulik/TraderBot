@@ -5,6 +5,8 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from pathlib import Path
 
 from . import i18n
 from .config import ROOT
@@ -30,6 +32,57 @@ def api_call(token: str, method: str, http_timeout: float = 10.0, **params) -> d
             payload = json.loads(body)
         except json.JSONDecodeError:
             payload = {"ok": False, "description": body or str(exc)}
+        payload.setdefault("ok", False)
+        return payload
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return {"ok": False, "description": f"сеть: {exc}"}
+
+
+def api_send_photo(
+    token: str,
+    chat_id: str,
+    path: str | Path,
+    caption: str = "",
+    http_timeout: float = 30.0,
+) -> dict:
+    """Отправляет картинку через sendPhoto (multipart/form-data, только stdlib)."""
+    file_path = Path(path)
+    if not file_path.exists():
+        return {"ok": False, "description": f"нет файла: {file_path}"}
+
+    boundary = "----goldbot" + uuid.uuid4().hex
+    body = bytearray()
+
+    def field(name: str, value: str) -> None:
+        body.extend(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
+            f"{value}\r\n".encode("utf-8")
+        )
+
+    field("chat_id", str(chat_id))
+    if caption:
+        field("caption", caption[:1000])
+    body.extend(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; '
+        f'filename="{file_path.name}"\r\nContent-Type: image/png\r\n\r\n'.encode("utf-8")
+    )
+    body.extend(file_path.read_bytes())
+    body.extend(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+
+    request = urllib.request.Request(
+        API_URL.format(token=token, method="sendPhoto"),
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=http_timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        text = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = {"ok": False, "description": text or str(exc)}
         payload.setdefault("ok", False)
         return payload
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -131,6 +184,20 @@ class TelegramBot:
         )
         if not payload.get("ok"):
             print(f"[telegram] {chat_id}: {payload.get('description')}")
+            return False
+        return True
+
+    def send_photo(self, chat_id: str | int, path: str | Path, caption: str = "") -> bool:
+        """Отправляет картинку с подписью. При ошибке — только текст."""
+        if not self.enabled:
+            return False
+        payload = api_send_photo(
+            self.token, str(chat_id), path, caption, http_timeout=self.timeout * 3
+        )
+        if not payload.get("ok"):
+            print(f"[telegram] фото не отправлено: {payload.get('description')}")
+            if caption:
+                return self.send(chat_id, caption)
             return False
         return True
 
