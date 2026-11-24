@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from . import i18n
 
 W, H = 1240, 680
-LEFT, RIGHT, TOP, BOTTOM = 18, 185, 84, 46
+LEFT, RIGHT, TOP, BOTTOM = 18, 226, 84, 46
 
 BG = (13, 20, 31)
 GRID = (28, 40, 56)
@@ -112,25 +112,100 @@ def render_chart(
             fill=color,
         )
 
-    # Зоны: подписи раскладываем так, чтобы не наезжали друг на друга
+    # Зоны и текущая цена: подписи в правой колонке.
     y_last = y_of(report["price"])
     f_zone = _font(14, bold=True)
-    items = []
+    f_last = _font(13, bold=True)
+
+    def _text_size(text: str, font) -> tuple[float, float]:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    items: list[dict] = []
     for zone in report["zones"]:
         y = y_of(zone.price)
         if TOP <= y <= TOP + plot_h:
-            items.append({"y": y, "zone": zone})
-    items.append({"y": y_last, "zone": None})
+            text = f"{i18n.hourly_text(lang, zone.strength)} {zone.price:.2f}"
+            tw, th = _text_size(text, f_zone)
+            items.append(
+                {
+                    "y": y,
+                    "zone": zone,
+                    "text": text,
+                    "font": f_zone,
+                    "w": tw + 10,
+                    "h": th + 6,
+                    "kind": "zone",
+                }
+            )
+    last_text = f"{report['price']:.2f}"
+    tw, th = _text_size(last_text, f_last)
+    items.append(
+        {
+            "y": y_last,
+            "zone": None,
+            "text": last_text,
+            "font": f_last,
+            "w": tw + 8,
+            "h": th + 4,
+            "kind": "last",
+        }
+    )
     items.sort(key=lambda item: item["y"])
 
-    gap = 22
-    previous = None
+    # Плашки зон одной высоты — так столбик выглядит ровно
+    zone_h = max((it["h"] for it in items if it["kind"] == "zone"), default=0)
     for item in items:
-        label_y = item["y"]
-        if previous is not None and label_y - previous < gap:
-            label_y = previous + gap
-        item["label_y"] = min(label_y, TOP + plot_h)
-        previous = item["label_y"]
+        if item["kind"] == "zone":
+            item["h"] = zone_h
+
+    # Подписи, чьи плашки наезжают друг на друга по вертикали, ставим в одну
+    # строку: | сильная 3647.66 | 3643.08 |
+    ROW_STEP = 6
+    STACK_GAP = 4
+    avail_w = W - (LEFT + plot_w + 4) - 4
+    rows: list[dict] = []
+    for item in items:
+        if rows:
+            row = rows[-1]
+            gap = item["y"] - row["items"][-1]["y"]
+            overlap = gap < (row["h"] + item["h"]) / 2 + 1
+            width = sum(it["w"] for it in row["items"]) + ROW_STEP * len(row["items"]) + item["w"]
+            if overlap and width <= avail_w:
+                row["items"].append(item)
+                row["h"] = max(row["h"], item["h"])
+                continue
+        rows.append({"items": [item], "h": item["h"]})
+
+    # Строку с текущей ценой держим на её уровне, остальные — по средней цене
+    limit_top = TOP + 6
+    limit_bottom = TOP + plot_h - 6
+    for row in rows:
+        prices = [it["y"] for it in row["items"]]
+        last_y = [it["y"] for it in row["items"] if it["kind"] == "last"]
+        row["y"] = last_y[0] if last_y else sum(prices) / len(prices)
+        row["y"] = min(max(row["y"], limit_top + row["h"] / 2), limit_bottom - row["h"] / 2)
+
+    previous_bottom = None
+    for row in rows:
+        if previous_bottom is not None:
+            row["y"] = max(row["y"], previous_bottom + STACK_GAP + row["h"] / 2)
+        previous_bottom = row["y"] + row["h"] / 2
+
+    overflow = rows[-1]["y"] + rows[-1]["h"] / 2 - limit_bottom
+    if overflow > 0:
+        shift = min(overflow, rows[0]["y"] - rows[0]["h"] / 2 - limit_top)
+        if shift > 0:
+            for row in rows:
+                row["y"] -= shift
+
+    x0 = LEFT + plot_w + 4
+    for row in rows:
+        x = x0
+        for item in row["items"]:
+            item["label_y"] = row["y"]
+            item["box_x"] = x
+            x += item["w"] + ROW_STEP
 
     for item in items:
         zone = item["zone"]
@@ -139,38 +214,38 @@ def render_chart(
         color = SELL if zone.side == "sell" else BUY
         width = 2 if zone.strength in ("strong", "strongest") else 1
         _dashed(draw, LEFT, LEFT + plot_w, int(item["y"]), color, width=width)
-        text = f"{i18n.hourly_text(lang, zone.strength)} {zone.price:.2f}"
-        bbox = draw.textbbox((0, 0), text, font=f_zone)
-        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        box_x = LEFT + plot_w + 4
+        item["color"] = color
+
+    for item in items:
+        zone = item["zone"]
+        if zone is None:
+            continue
+        top = item["label_y"] - item["h"] / 2
         draw.rectangle(
-            [box_x, item["label_y"] - th / 2 - 3, box_x + tw + 10, item["label_y"] + th / 2 + 3],
-            fill=color,
+            [item["box_x"], top, item["box_x"] + item["w"], top + item["h"]],
+            fill=item["color"],
         )
         draw.text(
-            (box_x + 5, item["label_y"]),
-            text,
+            (item["box_x"] + 5, item["label_y"]),
+            item["text"],
             fill=(10, 15, 22),
-            font=f_zone,
+            font=item["font"],
             anchor="lm",
         )
 
-    # Последняя цена (поверх зон, чтобы не сливалась с подписью)
+    # Последняя цена
     _dashed(draw, LEFT, LEFT + plot_w, int(y_last), LAST, width=1, dash=3, gap=3)
-    f_last = _font(15, bold=True)
-    last_text = f"{report['price']:.2f}"
-    last_bbox = draw.textbbox((0, 0), last_text, font=f_last)
-    last_w = last_bbox[2] - last_bbox[0]
-    last_h = last_bbox[3] - last_bbox[1]
+    last_item = next(it for it in items if it["kind"] == "last")
+    top = last_item["label_y"] - last_item["h"] / 2
     draw.rectangle(
-        [LEFT + plot_w + 4, y_last - last_h / 2 - 3, LEFT + plot_w + last_w + 14, y_last + last_h / 2 + 3],
+        [last_item["box_x"], top, last_item["box_x"] + last_item["w"], top + last_item["h"]],
         fill=LAST,
     )
     draw.text(
-        (LEFT + plot_w + 9, y_last),
-        last_text,
+        (last_item["box_x"] + 4, last_item["label_y"]),
+        last_item["text"],
         fill=(10, 15, 22),
-        font=f_last,
+        font=last_item["font"],
         anchor="lm",
     )
 
