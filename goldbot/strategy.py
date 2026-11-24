@@ -23,6 +23,7 @@ import pandas as pd
 from . import i18n
 from .config import ROOT
 from .indicators import adx, atr, ema, rsi
+from .zones import STRENGTH_ORDER, rank_zones, swing_points
 
 
 @dataclass
@@ -75,6 +76,8 @@ SETUP_LABELS = {
     "sell_noon": "Дневной откат (продажа в 12:00)",
     "sell_break": "Пробой вниз (продажа)",
     "swing_high": "Вход у хая по тренду (продажа)",
+    "zone_bounce_buy": "Отбой от поддержки (покупка)",
+    "zone_bounce_sell": "Отбой от сопротивления (продажа)",
 }
 
 
@@ -82,7 +85,12 @@ def warmup_bars(cfg: dict) -> int:
     params = cfg["strategy"]
     bars = 200
     for setup in params.get("setups", {}).values():
-        bars = max(bars, int(setup.get("drop_bars", 0)), int(setup.get("rsi_period", 0)))
+        bars = max(
+            bars,
+            int(setup.get("drop_bars", 0)),
+            int(setup.get("rsi_period", 0)),
+            int(setup.get("zone_window", 0)),
+        )
     return bars + 10
 
 
@@ -423,6 +431,10 @@ def _setup_condition(out: pd.DataFrame, setup: dict) -> pd.Series:
         hh = int(setup.get("enter_hour", 12))
         mm = int(setup.get("enter_minute", 0))
         cond &= (out["time"].dt.hour == hh) & (out["time"].dt.minute == mm)
+    elif trigger == "zone_bounce":
+        # Условие отбоя считается отдельно, по бару (см. _zone_columns),
+        # и подмешивается в prepare(). Здесь остаются только общие фильтры.
+        pass
     else:
         raise ValueError(f"Неизвестный trigger: {trigger}")
 
@@ -599,6 +611,117 @@ def _add_xmarket_columns(
             out[col] = merged[col].to_numpy()
 
 
+def _zone_spec(setup: dict) -> tuple:
+    """Параметры зон, влияющие на результат: по ним кэшируем расчёт."""
+    return (
+        int(setup.get("zone_window", 288)),
+        int(setup.get("zone_fractal", 3)),
+        int(setup.get("zone_per_side", 4)),
+        int(setup.get("zone_min_touches", 2)),
+        str(setup.get("zone_min_strength", "strong")),
+        int(setup.get("zone_touch_lookback", 3)),
+        float(setup.get("zone_touch_tol", 0.25)),
+        float(setup.get("zone_max_dist", 1.2)),
+    )
+
+
+def _zone_columns(out: pd.DataFrame, setup: dict) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """Отбой от зон по каждому бару: флаг, уровень зоны и цель (следующая зона).
+
+    Зоны считаются ровно теми же функциями, что и в часовом отчёте, по окну
+    последних `zone_window` баров — без заглядывания в будущее.
+    """
+    n = len(out)
+    window, fractal, per_side, min_touch, min_strength, lookback, tol, max_dist = _zone_spec(setup)
+    min_rank = STRENGTH_ORDER.index(min_strength)
+
+    atr_arr = out["atr"].to_numpy(dtype=float)
+    open_arr = out["open"].to_numpy(dtype=float)
+    high = out["high"].to_numpy(dtype=float)
+    low = out["low"].to_numpy(dtype=float)
+    close = out["close"].to_numpy(dtype=float)
+    times = out["time"]
+
+    result: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for side in ("buy", "sell"):
+        result[side] = (
+            np.zeros(n, dtype=bool),
+            np.full(n, np.nan),
+            np.full(n, np.nan),
+        )
+    if n <= window + fractal:
+        return result
+
+    swings = swing_points(out, fractal)
+    if not swings:
+        return result
+    swing_idx = np.array([s[0] for s in swings], dtype=int)
+
+    for i in range(max(window + fractal, 200), n):
+        atr_v = float(atr_arr[i])
+        if not np.isfinite(atr_v) or atr_v <= 0:
+            continue
+        first = i - window + 1
+        last = i - fractal
+        lo = int(np.searchsorted(swing_idx, first, "left"))
+        hi = int(np.searchsorted(swing_idx, last, "right"))
+        if hi <= lo:
+            continue
+        points = [(swings[j][1], swings[j][2], swings[j][3]) for j in range(lo, hi)]
+        price = float(close[i])
+        zones = rank_zones(
+            points,
+            times.iloc[first],
+            times.iloc[i],
+            atr_v,
+            price,
+            per_side=per_side,
+        )
+        if not zones:
+            continue
+        zones = [
+            z
+            for z in zones
+            if z.touches >= min_touch and STRENGTH_ORDER.index(z.strength) >= min_rank
+        ]
+        if not zones:
+            continue
+        sells = [z for z in zones if z.side == "sell"]
+        buys = [z for z in zones if z.side == "buy"]
+        recent_hi = float(high[max(0, i - lookback + 1) : i + 1].max())
+        recent_lo = float(low[max(0, i - lookback + 1) : i + 1].min())
+
+        if sells:
+            z = min(sells, key=lambda z: z.price)
+            if (
+                recent_hi >= z.price - tol * atr_v
+                and price < z.price
+                and z.price - price <= max_dist * atr_v
+                and close[i] < open_arr[i]
+            ):
+                flags, levels, targets = result["sell"]
+                flags[i] = True
+                levels[i] = z.price
+                if buys:
+                    targets[i] = max(b.price for b in buys)
+
+        if buys:
+            z = max(buys, key=lambda z: z.price)
+            if (
+                recent_lo <= z.price + tol * atr_v
+                and price > z.price
+                and price - z.price <= max_dist * atr_v
+                and close[i] > open_arr[i]
+            ):
+                flags, levels, targets = result["buy"]
+                flags[i] = True
+                levels[i] = z.price
+                if sells:
+                    targets[i] = min(s.price for s in sells)
+
+    return result
+
+
 def prepare(df: pd.DataFrame, cfg: dict, xmarket: dict[str, pd.DataFrame] | None = None) -> pd.DataFrame:
     """Считает индикаторы и отмечает сетапы на каждом закрытом баре.
 
@@ -652,10 +775,29 @@ def prepare(df: pd.DataFrame, cfg: dict, xmarket: dict[str, pd.DataFrame] | None
     spread_ok = out["spread"].fillna(0) <= max_spread
 
     out["setup"] = ""
+
+    # Зонные сетапы считаются не векторно, а по бару: зоны строятся по окну.
+    # Одинаковые параметры у BUY и SELL — считаем один раз на набор параметров.
+    zone_groups: dict[tuple, list[str]] = {}
+    for name, setup in params.get("setups", {}).items():
+        if setup.get("enabled", True) and setup.get("trigger") == "zone_bounce":
+            zone_groups.setdefault(_zone_spec(setup), []).append(name)
+    for names in zone_groups.values():
+        first = params["setups"][names[0]]
+        columns = _zone_columns(out, first)
+        for name in names:
+            side = "sell" if params["setups"][name].get("direction", "BUY") == "SELL" else "buy"
+            flags, levels, targets = columns[side]
+            out[f"zone_flag_{name}"] = flags
+            out[f"zone_level_{name}"] = levels
+            out[f"zone_target_{name}"] = targets
+
     for name, setup in params.get("setups", {}).items():
         if not setup.get("enabled", True):
             continue
         cond = spread_ok & _setup_condition(out, setup)
+        if setup.get("trigger") == "zone_bounce":
+            cond = cond & out[f"zone_flag_{name}"].to_numpy()
         out.loc[cond & (out["setup"] == ""), "setup"] = name
 
     directions = {
@@ -794,6 +936,11 @@ def _reasons(
                     if direction == "BUY"
                     else "Свеча-пин с длинной верхней тенью — отказ от роста"
                 )
+            )
+        elif trigger == "zone_bounce":
+            level = float(row.get(f"zone_level_{setup_name}", 0) or 0)
+            reasons.append(
+                ("zone_bounce_buy" if direction == "BUY" else "zone_bounce_sell", {"price": level})
             )
         elif trigger == "fade_break":
             bars = int(setup.get("break_bars", 20))
@@ -975,8 +1122,17 @@ def signal_at(
     use_swing = setup.get("sl_use_swing", True)
     sl_cap = bool(setup.get("sl_cap", False))
 
+    # Зонный сетап: SL за уровень зоны, TP — на следующей зоне.
+    zone_level = row.get(f"zone_level_{setup_name}")
+    zone_target = row.get(f"zone_target_{setup_name}")
+    zone_mode = setup.get("trigger") == "zone_bounce" and pd.notna(zone_level)
+    zone_buf = float(setup.get("zone_sl_buffer_atr", 0.15)) * atr_v
+
     if direction == "BUY":
-        sl = min(swing_low - buffer, entry - sl_dist) if use_swing else entry - sl_dist
+        if zone_mode:
+            sl = min(swing_low - buffer, float(zone_level) - zone_buf)
+        else:
+            sl = min(swing_low - buffer, entry - sl_dist) if use_swing else entry - sl_dist
         risk = entry - sl
         if risk <= 0:
             return None
@@ -985,9 +1141,15 @@ def signal_at(
                 return None
             risk = max_sl
             sl = entry - risk
-        tp = entry + rr * risk
+        if zone_mode and pd.notna(zone_target) and float(zone_target) - entry >= 0.8 * risk:
+            tp = float(zone_target)
+        else:
+            tp = entry + rr * risk
     else:
-        sl = max(swing_high + buffer, entry + sl_dist) if use_swing else entry + sl_dist
+        if zone_mode:
+            sl = max(swing_high + buffer, float(zone_level) + zone_buf)
+        else:
+            sl = max(swing_high + buffer, entry + sl_dist) if use_swing else entry + sl_dist
         risk = sl - entry
         if risk <= 0:
             return None
@@ -996,7 +1158,10 @@ def signal_at(
                 return None
             risk = max_sl
             sl = entry + risk
-        tp = entry - rr * risk
+        if zone_mode and pd.notna(zone_target) and entry - float(zone_target) >= 0.8 * risk:
+            tp = float(zone_target)
+        else:
+            tp = entry - rr * risk
 
     row["rsi_prev"] = float(df["rsi"].iloc[index - 1])
     reason_items = _reasons(df, index, row, setup_name, setup)

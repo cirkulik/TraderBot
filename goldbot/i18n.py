@@ -31,6 +31,8 @@ SETUP_LABELS = {
         "fade_late": "Провал пробоя (вечер, продажа)",
         "evening_break": "Вечерний пробой (продажа)",
         "short_rally_london": "Продажа после роста (Лондон)",
+        "zone_bounce_buy": "Отбой от поддержки (покупка)",
+        "zone_bounce_sell": "Отбой от сопротивления (продажа)",
     },
     "az": {
         "dip_london": "Düşüşdən sonra sıçrayış (London)",
@@ -45,6 +47,8 @@ SETUP_LABELS = {
         "fade_late": "Uğursuz qırılma (axşam, satış)",
         "evening_break": "Axşam qırılması (satış)",
         "short_rally_london": "Yüksəlişdən sonra satış (London)",
+        "zone_bounce_buy": "Dəstəkdən sıçrayış (alış)",
+        "zone_bounce_sell": "Müqavimətdən sıçrayış (satış)",
     },
 }
 
@@ -60,6 +64,8 @@ SESSION_LABELS = {
         "Тренд вверх": "Yüksəliş trendi",
         "Вечерняя сессия": "Axşam sessiyası",
         "Вечерний пробой": "Axşam qırılması",
+        "Зона поддержки": "Dəstək zonası",
+        "Зона сопротивления": "Müqavimət zonası",
         "торговая": "ticarət sessiyası",
     },
 }
@@ -83,6 +89,8 @@ REASONS = {
         "breakout_low": "Пробой минимума за {bars} баров",
         "fade_break_high": "Ложный пробой максимума за {bars} баров — возврат внутрь диапазона",
         "fade_break_low": "Ложный пробой минимума за {bars} баров — возврат внутрь диапазона",
+        "zone_bounce_buy": "Цена коснулась зоны поддержки {price:.2f} и закрылась выше — отбой",
+        "zone_bounce_sell": "Цена коснулась зоны сопротивления {price:.2f} и закрылась ниже — отбой",
         "atr": "ATR(14) = {atr:.2f} $ — волатильность учтена в SL/TP",
         "ema200_bull": "Цена выше EMA200 — глобальный тренд вверх",
         "ema200_bear": "Цена ниже EMA200 — глобальный тренд вниз",
@@ -133,6 +141,8 @@ REASONS = {
         "breakout_low": "{bars} barın minimumunun qırılması",
         "fade_break_high": "{bars} barın maksimumunun uğursuz qırılması — diapazona qayıdış",
         "fade_break_low": "{bars} barın minimumunun uğursuz qırılması — diapazona qayıdış",
+        "zone_bounce_buy": "Qiymət {price:.2f} dəstək zonasına toxunub yuxarıda bağlandı — sıçrayış",
+        "zone_bounce_sell": "Qiymət {price:.2f} müqavimət zonasına toxunub aşağıda bağlandı — sıçrayış",
         "atr": "ATR(14) = {atr:.2f} $ — volatillik SL/TP-də nəzərə alınıb",
         "ema200_bull": "Qiymət EMA200-dən yuxarıda — qlobal yüksəliş trendi",
         "ema200_bear": "Qiymət EMA200-dən aşağıda — qlobal eniş trendi",

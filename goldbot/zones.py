@@ -28,18 +28,30 @@ class Zone:
 
 def _swing_points(df: pd.DataFrame, k: int) -> list[tuple[float, pd.Timestamp, float]]:
     """Фракталы: бар выше/ниже k соседей слева и справа."""
-    out: list[tuple[float, pd.Timestamp, float]] = []
-    high = df["high"].to_numpy()
-    low = df["low"].to_numpy()
+    return [(price, when, vol) for _, price, when, vol in swing_points(df, k)]
+
+
+def swing_points(df: pd.DataFrame, k: int) -> list[tuple[int, float, pd.Timestamp, float]]:
+    """Все подтверждённые фракталы: (индекс, цена, время, объём).
+
+    Считается векторно, чтобы зонную стратегию можно было прогонять по каждому
+    бару без пересчёта окна с нуля.
+    """
+    n = len(df)
+    if n < 2 * k + 1:
+        return []
+    high = df["high"].to_numpy(dtype=float)
+    low = df["low"].to_numpy(dtype=float)
+    volume = df["tick_volume"].to_numpy(dtype=float)
     times = df["time"].tolist()
-    volume = df["tick_volume"].to_numpy()
-    for i in range(k, len(df) - k):
-        window_h = high[i - k : i + k + 1]
-        window_l = low[i - k : i + k + 1]
-        if high[i] >= window_h.max():
-            out.append((float(high[i]), times[i], float(volume[i])))
-        if low[i] <= window_l.min():
-            out.append((float(low[i]), times[i], float(volume[i])))
+    hmax = pd.Series(high).rolling(2 * k + 1, center=True).max().to_numpy()
+    lmin = pd.Series(low).rolling(2 * k + 1, center=True).min().to_numpy()
+    out: list[tuple[int, float, pd.Timestamp, float]] = []
+    for i in range(k, n - k):
+        if high[i] >= hmax[i]:
+            out.append((i, float(high[i]), times[i], float(volume[i])))
+        if low[i] <= lmin[i]:
+            out.append((i, float(low[i]), times[i], float(volume[i])))
     return out
 
 
@@ -66,14 +78,37 @@ def find_zones(
     """Строит уровни по свингам окна и ранжирует их по силе."""
     if df.empty or atr_value <= 0:
         return []
-
-    tol = cluster_atr * atr_value
     points = _swing_points(df, fractal)
     if not points:
         return []
+    return rank_zones(
+        points,
+        df["time"].iloc[0],
+        df["time"].iloc[-1],
+        atr_value,
+        price,
+        per_side=per_side,
+        cluster_atr=cluster_atr,
+        min_dist_atr=min_dist_atr,
+    )
 
+
+def rank_zones(
+    points: list[tuple[float, pd.Timestamp, float]],
+    t0: pd.Timestamp,
+    t1: pd.Timestamp,
+    atr_value: float,
+    price: float,
+    per_side: int = 3,
+    cluster_atr: float = 0.6,
+    min_dist_atr: float = 0.4,
+) -> list[Zone]:
+    """Ранжирует свинги окна в уровни. `points` — (цена, время, объём)."""
+    if not points or atr_value <= 0:
+        return []
+
+    tol = cluster_atr * atr_value
     groups = _cluster(points, tol)
-    t0, t1 = df["time"].iloc[0], df["time"].iloc[-1]
     span = max((t1 - t0).total_seconds(), 1.0)
     max_volume = max(sum(p[2] for p in g) for g in groups) or 1.0
 
