@@ -105,6 +105,7 @@ def run_daily(cfg: dict, args: argparse.Namespace) -> None:
         or (cfg.get("telegram", {}) or {}).get("default_lang", "ru")
     )
     hours = args.hours if args.hours is not None else int(daily_cfg.get("hours", 24))
+    per_side = int(daily_cfg.get("per_side", 3))
     send_daily(
         cfg,
         df,
@@ -113,6 +114,8 @@ def run_daily(cfg: dict, args: argparse.Namespace) -> None:
         telegram=not args.no_telegram,
         chart_dir=args.chart_dir,
         with_chart=bool(daily_cfg.get("chart", True)),
+        to=args.to or "all",
+        per_side=per_side,
     )
 
 

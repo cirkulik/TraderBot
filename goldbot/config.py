@@ -205,6 +205,7 @@ DEFAULTS: dict[str, Any] = {
         "utc_offset": 3,
         "hours": 24,
         "chart": True,
+        "per_side": 6,
     },
 }
 

@@ -362,6 +362,7 @@
     "time": "01:00",
     "utc_offset": 3,
     "hours": 24,
-    "chart": true
+    "chart": true,
+    "per_side": 6
   }
 }

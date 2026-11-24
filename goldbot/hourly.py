@@ -315,9 +315,11 @@ def send_daily(
     telegram: bool = True,
     chart_dir: str | Path | None = None,
     with_chart: bool = True,
+    to: str = "all",
+    per_side: int = 3,
 ) -> dict:
-    """Итоги дня по сильным зонам. Уходит всем активным получателям."""
-    report = build_report(df, hours=hours)
+    """Итоги дня по сильным зонам. По умолчанию всем активным получателям."""
+    report = build_report(df, hours=hours, per_side=per_side)
     picks = daily_picks(report, df)
     chart_report = dict(report)
     chart_report["zones"] = [item["zone"] for item in picks] or report["zones"]
@@ -349,7 +351,10 @@ def send_daily(
         print(build_daily_text(report, picks, lang))
         return report
 
-    recipients = bot.active_recipients()
+    if to == "admin" and bot.admin_chat_id:
+        recipients = [(bot.admin_chat_id, lang)]
+    else:
+        recipients = bot.active_recipients()
     if not recipients:
         print("[hourly] нет получателей")
         return report
