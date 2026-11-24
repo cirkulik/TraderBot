@@ -1,11 +1,16 @@
-"""Часовой отчёт в Telegram: зоны за 24 часа, bias, картинка.
+"""Периодический отчёт в Telegram: зоны за 24 часа, bias, картинка.
 
 Примеры:
-    python run_hourly.py --once                     # один отчёт, отправить
+    python run_hourly.py --once                     # один отчёт, отправить всем
     python run_hourly.py --once --no-telegram       # только в консоль + картинка
-    python run_hourly.py --loop                     # каждый час, в :01
-    python run_hourly.py --loop --minute 5
+    python run_hourly.py --loop                     # расписание из конфига
+    python run_hourly.py --loop --intervals 5,15,30,60
+    python run_hourly.py --loop --intervals 15 --minute 5   # :05, :20, :35, :50
     python run_hourly.py --once --csv data/XAUUSD_M5.csv
+
+Расписание: поддерживаются 5, 15, 30 и 60 минут. Цикл просыпается на самом
+коротком интервале, а дальше смотрит, какие интервалы наступили в этот слот.
+Кому что уходит — настраивается по каналам: /channel <id> 5 30.
 
 Это информационный разбор уровней, не торговый сигнал.
 """
@@ -19,6 +24,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from goldbot import intervals
 from goldbot.config import ROOT, load_config
 from goldbot.hourly import send_report
 
@@ -55,7 +61,7 @@ def load_data(cfg: dict, csv_path: Path | None) -> pd.DataFrame:
         return load_from_csv(CSV_PATH)
 
 
-def run_once(cfg: dict, args: argparse.Namespace) -> None:
+def run_once(cfg: dict, args: argparse.Namespace, due: set[int] | None = None) -> None:
     df = load_data(cfg, Path(args.csv) if args.csv else None)
     if df.empty:
         print("[hourly] нет данных")
@@ -77,22 +83,42 @@ def run_once(cfg: dict, args: argparse.Namespace) -> None:
         chart_dir=args.chart_dir,
         with_chart=bool(hourly_cfg.get("chart", True)),
         to=to,
+        due=due,
     )
 
 
-def seconds_until(minute: int) -> float:
-    now = datetime.now()
-    target = now.replace(minute=minute, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(hours=1)
-    return (target - now).total_seconds()
+def due_intervals(slot: datetime, minute: int, slots: list[int]) -> list[int]:
+    """Какие интервалы наступают в этот слот (сдвиг `minute` внутри часа)."""
+    since_midnight = slot.hour * 60 + slot.minute
+    return [step for step in slots if (since_midnight - minute) % step == 0]
+
+
+def next_slot(now: datetime, minute: int, step: int) -> datetime:
+    """Ближайший слот расписания, кратный `step` минутам, со сдвигом `minute`."""
+    slot = now.replace(minute=0, second=0, microsecond=0) + timedelta(
+        minutes=minute % step
+    )
+    while slot <= now:
+        slot += timedelta(minutes=step)
+    return slot
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Часовой отчёт XAUUSD M5")
+    parser = argparse.ArgumentParser(description="Периодический отчёт XAUUSD M5")
     parser.add_argument("--once", action="store_true", help="один отчёт и выход")
-    parser.add_argument("--loop", action="store_true", help="отправлять каждый час")
-    parser.add_argument("--minute", type=int, default=None, help="минута часа для отправки")
+    parser.add_argument("--loop", action="store_true", help="отправлять по расписанию")
+    parser.add_argument("--minute", type=int, default=None, help="сдвиг слота внутри часа, минут")
+    parser.add_argument(
+        "--intervals",
+        default=None,
+        help="интервалы через запятую: 5,15,30,60 (по умолчанию из hourly.intervals)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=None,
+        help="устаревшее: один интервал; используйте --intervals",
+    )
     parser.add_argument("--hours", type=int, default=None, help="окно анализа, часов")
     parser.add_argument("--lang", default=None, help="ru или az (по умолчанию из конфига)")
     parser.add_argument(
@@ -119,15 +145,34 @@ def main() -> None:
         run_once(cfg, args)
         return
 
-    print(f"[hourly] цикл запущен, отправка в :{args.minute:02d} каждого часа")
+    if args.interval is not None:
+        slots = intervals.normalize([args.interval])
+    elif args.intervals:
+        slots = intervals.normalize(str(args.intervals).replace(",", " ").split())
+    else:
+        slots = intervals.normalize(hourly_cfg.get("intervals") or [])
+    if not slots:
+        parser.error("поддерживаются интервалы 5, 15, 30, 60")
+
+    step = min(slots)
+    minute = args.minute % step
+    print(
+        f"[hourly] цикл запущен: интервалы {intervals.label(slots)}, "
+        f"шаг {step} мин, сдвиг :{minute:02d}"
+    )
     while True:
-        wait = seconds_until(args.minute)
-        print(f"[hourly] следующая отправка через {wait / 60:.1f} мин")
-        while wait > 0:
-            time.sleep(min(wait, 30))
-            wait -= 30
+        slot = next_slot(datetime.now(), minute, step)
+        while True:
+            left = (slot - datetime.now()).total_seconds()
+            if left <= 0:
+                break
+            time.sleep(min(left, 30))
+        due = due_intervals(slot, minute, slots)
+        if not due:
+            continue
+        print(f"[hourly] {slot:%d.%m %H:%M} — интервалы: {', '.join(map(str, due))}")
         try:
-            run_once(cfg, args)
+            run_once(cfg, args, set(due))
         except Exception as exc:  # noqa: BLE001 - цикл не должен падать
             print(f"[hourly] ошибка: {exc}", file=sys.stderr)
 

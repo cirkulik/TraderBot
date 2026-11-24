@@ -8,7 +8,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from . import i18n
+from . import i18n, intervals
 from .config import ROOT
 from .subscribers import ACTIVE, BLOCKED, PAUSED, SubscriberStore
 
@@ -238,9 +238,11 @@ class TelegramBot:
         """Язык администратора (для стартового сообщения и ответов)."""
         return self._admin_lang()
 
-    def active_recipients(self) -> list[tuple[str, str]]:
+    def active_recipients(self, due: set[int] | None = None) -> list[tuple[str, str]]:
         """[(chat_id, lang)] — все, кому бот имеет право писать.
 
+        `due` — какие интервалы отправляются в этот слот (5/15/30/60). Если
+        передан, остаются только те, у кого такой интервал включён.
         Подписчики, которые ни разу не нажимали Start, пропускаются: Telegram
         не даёт им писать. Админ добавляется, даже если его нет в базе.
         """
@@ -252,10 +254,13 @@ class TelegramBot:
                 continue
             if not user.get("started"):
                 continue
+            if due is not None and not set(intervals.parse(user.get("intervals"))) & due:
+                continue
             seen.add(chat_id)
             out.append((chat_id, self._user_lang(user)))
         if self.admin_chat_id and self.admin_chat_id not in seen:
-            out.append((self.admin_chat_id, self._admin_lang()))
+            if due is None or intervals.DEFAULT in due:
+                out.append((self.admin_chat_id, self._admin_lang()))
         return out
 
     # ------------------------------------------------------------- настройка
@@ -377,15 +382,16 @@ class TelegramBot:
             else:
                 self.notify_admin(
                     f"✅ Канал «{title}» подключён.\n"
-                    f"Раз в час туда будет уходить анализ XAUUSD M5.\n"
+                    f"Анализ XAUUSD M5 будет уходить по расписанию (по умолчанию раз в час).\n"
                     f"Язык: {i18n.LANGUAGE_NAMES.get(lang, lang)}.\n"
-                    f"Сменить: /channel {chat_id} ru|az · список: /channels"
+                    f"Изменить: /channel {chat_id} ru|az · 5 15 30 60 · on|off\n"
+                    f"Список: /channels"
                 )
             return
 
         self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard())
         self.notify_admin(
-            f"Группа «{title}» подключена — туда пойдёт только часовой разбор, "
+            f"Группа «{title}» подключена — туда пойдёт только разбор уровней, "
             f"сигналы остаются в личных сообщениях.\n"
             f"Язык группы: /lang (сейчас {i18n.LANGUAGE_NAMES.get(lang, lang)})."
         )
@@ -541,36 +547,59 @@ class TelegramBot:
         for user in sorted(rows, key=lambda r: str(r.get("name") or "")):
             mark = "✅" if user.get("status") == ACTIVE else "⏸"
             code = self._user_lang(user)
+            period = intervals.label(intervals.parse(user.get("intervals")), code)
             lines.append(
                 f"{mark} {user.get('name') or user['chat_id']}\n"
-                f"    {user['chat_id']} · {code}"
+                f"    {user['chat_id']} · {code} · {period}"
             )
         lines.append("")
         lines.append(i18n.t(lang, "channels_hint"))
         self.send(chat_id, "\n".join(lines))
 
     def _cmd_channel(self, arg: str, chat_id: str, lang: str) -> None:
-        """Настройка канала из лички админа: язык и вкл/выкл."""
+        """Настройка канала из лички админа: язык, вкл/выкл, интервалы."""
         parts = arg.split()
         if len(parts) < 2:
             self.send(chat_id, i18n.t(lang, "channel_usage"))
             return
-        ref, value = parts[0], parts[1].lower()
+        ref = parts[0]
+        values = [part.lower() for part in parts[1:]]
         target = self.store.find(ref)
         if target is None or not self.is_group_chat(target["chat_id"]):
             self.send(chat_id, i18n.t(lang, "channel_not_found", ref=ref))
             return
 
         name = target.get("name") or target["chat_id"]
-        if value in i18n.LANGUAGES:
+        value = values[0]
+        if len(values) == 1 and value in i18n.LANGUAGES:
             self.store.upsert(target["chat_id"], lang=value)
             self.send(chat_id, i18n.t(lang, "channel_lang_set", name=name, code=value))
-        elif value in ("on", "off"):
+            return
+        if len(values) == 1 and value in ("on", "off"):
             self.store.set_status(target["chat_id"], ACTIVE if value == "on" else PAUSED)
             key = "channel_on" if value == "on" else "channel_off"
             self.send(chat_id, i18n.t(lang, key, name=name))
-        else:
+            return
+
+        raw = " ".join(values)
+        wanted = (
+            list(intervals.SUPPORTED)
+            if raw in intervals.ALL_ALIASES
+            else intervals.normalize(raw.split())
+        )
+        if not wanted:
             self.send(chat_id, i18n.t(lang, "channel_usage"))
+            return
+        self.store.set_intervals(target["chat_id"], wanted)
+        self.send(
+            chat_id,
+            i18n.t(
+                lang,
+                "channel_intervals_set",
+                name=name,
+                period=intervals.label(wanted, lang),
+            ),
+        )
 
     def _allow(self, ref: str, target: dict | None, by_chat_id: str, by_lang: str) -> None:
         known = target is not None

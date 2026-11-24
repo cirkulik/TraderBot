@@ -195,6 +195,7 @@ DEFAULTS: dict[str, Any] = {
         "lang": "az",
         "hours": 24,
         "minute": 1,
+        "intervals": [5, 15, 30, 60],
         "chart": True,
         "to": "all",
     },

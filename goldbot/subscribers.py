@@ -16,6 +16,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import intervals
+
 ACTIVE = "active"
 PAUSED = "paused"
 BLOCKED = "blocked"
@@ -29,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
     name         TEXT NOT NULL DEFAULT '',
     lang         TEXT NOT NULL DEFAULT '',
     status       TEXT NOT NULL DEFAULT 'blocked',
+    intervals    TEXT NOT NULL DEFAULT '60',
     started      INTEGER NOT NULL DEFAULT 0,
     created_utc  TEXT NOT NULL,
     last_seen_utc TEXT NOT NULL
@@ -61,13 +64,18 @@ class SubscriberStore:
         self._migrate_json()
 
     def _ensure_columns(self) -> None:
-        """Добавляет started в старую базу и считает старых пользователей живыми."""
+        """Дотягивает колонки в старой базе: started и интервалы отправки."""
         cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(users)")}
         if "started" not in cols:
             self._conn.execute(
                 "ALTER TABLE users ADD COLUMN started INTEGER NOT NULL DEFAULT 0"
             )
             self._conn.execute("UPDATE users SET started = 1")
+            self._conn.commit()
+        if "intervals" not in cols:
+            self._conn.execute(
+                "ALTER TABLE users ADD COLUMN intervals TEXT NOT NULL DEFAULT '60'"
+            )
             self._conn.commit()
 
     def close(self) -> None:
@@ -161,14 +169,16 @@ class SubscriberStore:
                 status = BLOCKED
             self._conn.execute(
                 "INSERT INTO users "
-                "(chat_id, username, name, lang, status, started, created_utc, last_seen_utc) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(chat_id, username, name, lang, status, intervals, started, "
+                "created_utc, last_seen_utc) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     key,
                     str(fields.get("username") or ""),
                     str(fields.get("name") or ""),
                     str(fields.get("lang") or ""),
                     status,
+                    intervals.pack(intervals.parse(fields.get("intervals"))),
                     1 if fields.get("started") else 0,
                     now,
                     now,
@@ -178,8 +188,13 @@ class SubscriberStore:
             updates = {
                 k: v
                 for k, v in fields.items()
-                if v is not None and k in ("username", "name", "lang", "status", "started")
+                if v is not None
+                and k in ("username", "name", "lang", "status", "intervals", "started")
             }
+            if "intervals" in updates:
+                updates["intervals"] = intervals.pack(
+                    intervals.parse(updates["intervals"])
+                )
             updates["last_seen_utc"] = now
             sets = ", ".join(f"{k} = ?" for k in updates)
             values = list(updates.values()) + [key]
@@ -198,6 +213,12 @@ class SubscriberStore:
         if self.get(chat_id) is None:
             return None
         return self.upsert(chat_id, lang=lang)
+
+    def set_intervals(self, chat_id: str | int, values) -> dict | None:
+        """Какие отправления получает чат: 5/15/30/60 минут."""
+        if self.get(chat_id) is None:
+            return None
+        return self.upsert(chat_id, intervals=intervals.pack(values))
 
     def remove(self, chat_id: str | int) -> bool:
         cursor = self._conn.execute(

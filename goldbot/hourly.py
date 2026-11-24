@@ -1,6 +1,7 @@
-"""Часовой отчёт: текст, картинка, отправка в Telegram."""
+"""Отчёт по уровням: текст, картинка, отправка в Telegram."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,8 @@ import pandas as pd
 from . import i18n
 from .config import ROOT
 from .zones import build_report
+
+CHART_KEEP_DAYS = 7
 
 
 def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
@@ -106,6 +109,21 @@ def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
     return "\n".join(lines)
 
 
+def _cleanup_charts(out_dir: Path, keep_days: int = CHART_KEEP_DAYS) -> None:
+    """Убирает старые картинки: при отправке каждые 5 минут их копится много."""
+    deadline = time.time() - keep_days * 86400
+    try:
+        files = list(out_dir.glob("hourly_*.png"))
+    except OSError:
+        return
+    for file in files:
+        try:
+            if file.stat().st_mtime < deadline:
+                file.unlink()
+        except OSError:
+            continue
+
+
 def _prepare(
     report: dict,
     lang: str,
@@ -123,6 +141,7 @@ def _prepare(
             out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
             name = f"hourly_{report['time']:%Y%m%d_%H%M}_{lang}.png"
             image_path = render_chart(df, report, out_dir / name, lang=lang)
+            _cleanup_charts(out_dir)
         except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
             print(f"[hourly] картинка не построена: {exc}")
     return text, image_path
@@ -137,8 +156,13 @@ def send_report(
     chart_dir: str | Path | None = None,
     with_chart: bool = True,
     to: str = "all",
+    due: set[int] | None = None,
 ) -> dict:
-    """Считает отчёт и отправляет. `to="all"` — каждому на его языке."""
+    """Считает отчёт и отправляет.
+
+    `to="all"` — каждому на его языке; `due` — какие интервалы отправляются
+    сейчас (5/15/30/60), остальным получателям сообщение не идёт.
+    """
     report = build_report(df, hours=hours)
 
     if not telegram:
@@ -159,8 +183,8 @@ def send_report(
     if to == "admin":
         recipients = [(bot.admin_chat_id, lang)] if bot.admin_chat_id else []
     else:
-        recipients = bot.active_recipients()
-        if not recipients and bot.admin_chat_id:
+        recipients = bot.active_recipients(due)
+        if not recipients and bot.admin_chat_id and due is None:
             recipients = [(bot.admin_chat_id, lang)]
 
     if not recipients:

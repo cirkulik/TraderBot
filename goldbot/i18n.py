@@ -198,13 +198,14 @@ MESSAGES = {
             "/channels — список каналов\n"
             "/channel <id> ru|az — язык канала\n"
             "/channel <id> on|off — вкл/выкл канал\n"
+            "/channel <id> 5 15 30 60 — какие отчёты слать\n"
             "/lang — сменить язык"
         ),
         "paused": "⏸ Сигналы отключены. Отправьте /start, чтобы включить снова.",
         "lang_set": "✅ Язык изменён: {name}",
         "group_added": (
             "✅ GoldBot подключён к группе.\n"
-            "Сюда будет приходить анализ XAUUSD M5: зоны, bias и график раз в час.\n\n"
+            "Сюда будет приходить анализ XAUUSD M5: зоны, bias и график по расписанию.\n\n"
             "/lang — выбрать язык для этой группы\n"
             "/stop — остановить анализ в группе"
         ),
@@ -223,13 +224,17 @@ MESSAGES = {
         ),
         "channels_hint": (
             "/channel <id> ru|az — язык канала\n"
-            "/channel <id> on|off — включить или остановить"
+            "/channel <id> on|off — включить или остановить\n"
+            "/channel <id> 5 15 30 60 — какие отчёты слать (all — все)"
         ),
-        "channel_usage": "Формат: /channel <id> ru|az или /channel <id> on|off",
+        "channel_usage": (
+            "Формат: /channel <id> ru|az · on|off · 5 15 30 60 (или all)"
+        ),
         "channel_not_found": "Канал {ref} не найден. Список: /channels",
         "channel_lang_set": "✅ «{name}»: язык {code}",
         "channel_on": "✅ «{name}»: рассылка включена",
         "channel_off": "⏸ «{name}»: рассылка остановлена",
+        "channel_intervals_set": "✅ «{name}»: отчёты — {period}",
         "startup_title": "🤖 GoldBot запущен",
         "startup_setups": "XAUUSD M5, сетапы: {setups}",
         "startup_wait": "Ждём сигналы: 09:00–18:00 (время сервера).",
@@ -273,13 +278,14 @@ MESSAGES = {
             "/channels — kanalların siyahısı\n"
             "/channel <id> ru|az — kanalın dili\n"
             "/channel <id> on|off — kanalı aç/bağla\n"
+            "/channel <id> 5 15 30 60 — hansı hesabatlar getsin\n"
             "/lang — dili dəyiş"
         ),
         "paused": "⏸ Siqnallar söndürüldü. Yenidən açmaq üçün /start göndərin.",
         "lang_set": "✅ Dil dəyişdirildi: {name}",
         "group_added": (
             "✅ GoldBot qrupa qoşuldu.\n"
-            "Buraya XAUUSD M5 analizi gələcək: zonalar, bias və qrafik saatda bir dəfə.\n\n"
+            "Buraya XAUUSD M5 analizi gələcək: zonalar, bias və qrafik cədvəl üzrə.\n\n"
             "/lang — bu qrup üçün dil seç\n"
             "/stop — qrupda analizi dayandır"
         ),
@@ -298,13 +304,17 @@ MESSAGES = {
         ),
         "channels_hint": (
             "/channel <id> ru|az — kanalın dili\n"
-            "/channel <id> on|off — aç və ya dayandır"
+            "/channel <id> on|off — aç və ya dayandır\n"
+            "/channel <id> 5 15 30 60 — hansı hesabatlar getsin (all — hamısı)"
         ),
-        "channel_usage": "Format: /channel <id> ru|az və ya /channel <id> on|off",
+        "channel_usage": (
+            "Format: /channel <id> ru|az · on|off · 5 15 30 60 (və ya all)"
+        ),
         "channel_not_found": "Kanal {ref} tapılmadı. Siyahı: /channels",
         "channel_lang_set": "✅ «{name}»: dil {code}",
         "channel_on": "✅ «{name}»: yayım açıldı",
         "channel_off": "⏸ «{name}»: yayım dayandırıldı",
+        "channel_intervals_set": "✅ «{name}»: hesabatlar — {period}",
         "startup_title": "🤖 GoldBot işə salındı",
         "startup_setups": "XAUUSD M5, setaplar: {setups}",
         "startup_wait": "Siqnalları gözləyirik: 09:00–18:00 (server vaxtı).",
