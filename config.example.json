@@ -356,5 +356,12 @@
     "intervals": [5, 15, 30, 60],
     "chart": true,
     "to": "all"
+  },
+  "daily": {
+    "enabled": true,
+    "time": "01:00",
+    "utc_offset": 3,
+    "hours": 24,
+    "chart": true
   }
 }

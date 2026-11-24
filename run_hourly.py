@@ -6,11 +6,15 @@
     python run_hourly.py --loop                     # расписание из конфига
     python run_hourly.py --loop --intervals 5,15,30,60
     python run_hourly.py --loop --intervals 15 --minute 5   # :05, :20, :35, :50
+    python run_hourly.py --once --daily             # итоги дня в консоль
     python run_hourly.py --once --csv data/XAUUSD_M5.csv
 
 Расписание: поддерживаются 5, 15, 30 и 60 минут. Цикл просыпается на самом
 коротком интервале, а дальше смотрит, какие интервалы наступили в этот слот.
 Кому что уходит — настраивается по каналам: /channel <id> 5 30.
+
+Отдельно раз в сутки (по умолчанию 01:00 МСК, `daily`) уходит разбор сильных
+зон за день — всем каналам, независимо от их интервалов.
 
 Это информационный разбор уровней, не торговый сигнал.
 """
@@ -19,14 +23,14 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from goldbot import intervals
 from goldbot.config import ROOT, load_config
-from goldbot.hourly import send_report
+from goldbot.hourly import send_daily, send_report
 
 BARS = 5000
 CSV_PATH = ROOT / "data" / "XAUUSD_M5.csv"
@@ -87,6 +91,31 @@ def run_once(cfg: dict, args: argparse.Namespace, due: set[int] | None = None) -
     )
 
 
+def run_daily(cfg: dict, args: argparse.Namespace) -> None:
+    """Итоги дня: сильные зоны за сутки, всем каналам."""
+    df = load_data(cfg, Path(args.csv) if args.csv else None)
+    if df.empty:
+        print("[daily] нет данных")
+        return
+    daily_cfg = cfg.get("daily", {}) or {}
+    hourly_cfg = cfg.get("hourly", {}) or {}
+    lang = (
+        args.lang
+        or hourly_cfg.get("lang")
+        or (cfg.get("telegram", {}) or {}).get("default_lang", "ru")
+    )
+    hours = args.hours if args.hours is not None else int(daily_cfg.get("hours", 24))
+    send_daily(
+        cfg,
+        df,
+        lang=lang,
+        hours=hours,
+        telegram=not args.no_telegram,
+        chart_dir=args.chart_dir,
+        with_chart=bool(daily_cfg.get("chart", True)),
+    )
+
+
 def due_intervals(slot: datetime, minute: int, slots: list[int]) -> list[int]:
     """Какие интервалы наступают в этот слот (сдвиг `minute` внутри часа)."""
     since_midnight = slot.hour * 60 + slot.minute
@@ -103,10 +132,29 @@ def next_slot(now: datetime, minute: int, step: int) -> datetime:
     return slot
 
 
+def parse_hhmm(text: str) -> tuple[int, int]:
+    hour, _, minute = str(text or "01:00").partition(":")
+    return int(hour) % 24, int(minute) % 60
+
+
+def next_daily(now: datetime, time_text: str, utc_offset: float) -> datetime:
+    """Ближайшее HH:MM в поясе UTC±offset, в локальном времени машины."""
+    hour, minute = parse_hhmm(time_text)
+    tz = timezone(timedelta(hours=utc_offset))
+    current = now.astimezone(tz)
+    target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= current:
+        target += timedelta(days=1)
+    return target.astimezone(now.tzinfo).replace(tzinfo=None)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Периодический отчёт XAUUSD M5")
     parser.add_argument("--once", action="store_true", help="один отчёт и выход")
     parser.add_argument("--loop", action="store_true", help="отправлять по расписанию")
+    parser.add_argument(
+        "--daily", action="store_true", help="итоги дня вместо обычного отчёта (с --once)"
+    )
     parser.add_argument("--minute", type=int, default=None, help="сдвиг слота внутри часа, минут")
     parser.add_argument(
         "--intervals",
@@ -142,7 +190,10 @@ def main() -> None:
         args.minute = int(hourly_cfg.get("minute", 1))
 
     if args.once:
-        run_once(cfg, args)
+        if args.daily:
+            run_daily(cfg, args)
+        else:
+            run_once(cfg, args)
         return
 
     if args.interval is not None:
@@ -160,21 +211,51 @@ def main() -> None:
         f"[hourly] цикл запущен: интервалы {intervals.label(slots)}, "
         f"шаг {step} мин, сдвиг :{minute:02d}"
     )
+
+    daily_cfg = cfg.get("daily", {}) or {}
+    daily_on = bool(daily_cfg.get("enabled", True))
+    daily_time = str(daily_cfg.get("time", "01:00"))
+    daily_offset = float(daily_cfg.get("utc_offset", 3))
+    next_daily_at: datetime | None = None
+    if daily_on:
+        next_daily_at = next_daily(
+            datetime.now().astimezone(), daily_time, daily_offset
+        )
+        print(
+            f"[hourly] итоги дня: {daily_time} (UTC{daily_offset:+g}) "
+            f"— следующий {next_daily_at:%d.%m %H:%M} по времени машины"
+        )
+
     while True:
         slot = next_slot(datetime.now(), minute, step)
+        wake = min([slot] + ([next_daily_at] if next_daily_at else []))
         while True:
-            left = (slot - datetime.now()).total_seconds()
+            left = (wake - datetime.now()).total_seconds()
             if left <= 0:
                 break
             time.sleep(min(left, 30))
-        due = due_intervals(slot, minute, slots)
-        if not due:
-            continue
-        print(f"[hourly] {slot:%d.%m %H:%M} — интервалы: {', '.join(map(str, due))}")
-        try:
-            run_once(cfg, args, set(due))
-        except Exception as exc:  # noqa: BLE001 - цикл не должен падать
-            print(f"[hourly] ошибка: {exc}", file=sys.stderr)
+        now = datetime.now()
+
+        if next_daily_at is not None and now >= next_daily_at:
+            print(f"[hourly] {now:%d.%m %H:%M} — итоги дня")
+            try:
+                run_daily(cfg, args)
+            except Exception as exc:  # noqa: BLE001 - цикл не должен падать
+                print(f"[hourly] ошибка итогов дня: {exc}", file=sys.stderr)
+            next_daily_at = next_daily(
+                datetime.now().astimezone(), daily_time, daily_offset
+            )
+
+        if now >= slot:
+            due = due_intervals(slot, minute, slots)
+            if due:
+                print(
+                    f"[hourly] {slot:%d.%m %H:%M} — интервалы: {', '.join(map(str, due))}"
+                )
+                try:
+                    run_once(cfg, args, set(due))
+                except Exception as exc:  # noqa: BLE001 - цикл не должен падать
+                    print(f"[hourly] ошибка: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

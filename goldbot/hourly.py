@@ -112,16 +112,17 @@ def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
 def _cleanup_charts(out_dir: Path, keep_days: int = CHART_KEEP_DAYS) -> None:
     """Убирает старые картинки: при отправке каждые 5 минут их копится много."""
     deadline = time.time() - keep_days * 86400
-    try:
-        files = list(out_dir.glob("hourly_*.png"))
-    except OSError:
-        return
-    for file in files:
+    for pattern in ("hourly_*.png", "daily_*.png"):
         try:
-            if file.stat().st_mtime < deadline:
-                file.unlink()
+            files = list(out_dir.glob(pattern))
         except OSError:
             continue
+        for file in files:
+            try:
+                if file.stat().st_mtime < deadline:
+                    file.unlink()
+            except OSError:
+                continue
 
 
 def _prepare(
@@ -130,21 +131,41 @@ def _prepare(
     df: pd.DataFrame,
     chart_dir: str | Path | None,
     with_chart: bool,
+    *,
+    title: str = "GOLD M5",
+    prefix: str = "hourly",
+    text: str | None = None,
 ) -> tuple[str, Path | None]:
     """Текст и картинка на одном языке."""
-    text = build_text(report, lang)
+    body = text if text is not None else build_text(report, lang)
     image_path: Path | None = None
     if with_chart:
         try:
             from .chart import render_chart
 
             out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
-            name = f"hourly_{report['time']:%Y%m%d_%H%M}_{lang}.png"
-            image_path = render_chart(df, report, out_dir / name, lang=lang)
+            name = f"{prefix}_{report['time']:%Y%m%d_%H%M}_{lang}.png"
+            image_path = render_chart(df, report, out_dir / name, lang=lang, title=title)
             _cleanup_charts(out_dir)
         except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
             print(f"[hourly] картинка не построена: {exc}")
-    return text, image_path
+    return body, image_path
+
+
+def _deliver(
+    bot, recipients: list[tuple[str, str]], cache: dict[str, tuple[str, Path | None]]
+) -> int:
+    sent = 0
+    for chat_id, user_lang in recipients:
+        text, image_path = cache[user_lang]
+        if image_path and image_path.exists():
+            ok = bot.send_photo(chat_id, image_path, caption=text)
+        else:
+            ok = bot.send(chat_id, text)
+        sent += 1 if ok else 0
+        print(f"[hourly] {chat_id} ({user_lang}): {'ok' if ok else 'ошибка'}")
+    print(f"[hourly] отправлено {sent} из {len(recipients)}")
+    return sent
 
 
 def send_report(
@@ -193,18 +214,147 @@ def send_report(
 
     langs = {user_lang for _, user_lang in recipients}
     cache: dict[str, tuple[str, Path | None]] = {
-        lang: _prepare(report, lang, df, chart_dir, with_chart) for lang in langs
+        user_lang: _prepare(report, user_lang, df, chart_dir, with_chart)
+        for user_lang in langs
     }
+    _deliver(bot, recipients, cache)
+    return report
 
-    sent = 0
-    for chat_id, user_lang in recipients:
-        text, image_path = cache[user_lang]
-        if image_path and image_path.exists():
-            ok = bot.send_photo(chat_id, image_path, caption=text)
-        else:
-            ok = bot.send(chat_id, text)
-        sent += 1 if ok else 0
-        print(f"[hourly] {chat_id} ({user_lang}): {'ok' if ok else 'ошибка'}")
 
-    print(f"[hourly] отправлено {sent} из {len(recipients)}")
+def _zone_result(window: pd.DataFrame, zone, atr_value: float) -> str:
+    """Как отработала зона после последнего касания: held / broken / пусто."""
+    if atr_value <= 0 or window.empty:
+        return ""
+    tol = 0.2 * atr_value
+    after = window[window["time"] >= zone.last_touch]
+    if after.empty:
+        return ""
+    if zone.side == "sell":
+        if bool((after["close"] > zone.price + tol).any()):
+            return "broken"
+        if float(after["close"].min()) <= zone.price - 0.4 * atr_value:
+            return "held"
+    else:
+        if bool((after["close"] < zone.price - tol).any()):
+            return "broken"
+        if float(after["close"].max()) >= zone.price + 0.4 * atr_value:
+            return "held"
+    return ""
+
+
+def daily_picks(report: dict, df: pd.DataFrame) -> list[dict]:
+    """Сильные и сильнейшие зоны дня с результатом отработки."""
+    window = df[df["time"] >= report["time"] - pd.Timedelta(hours=report["hours"])]
+    zones = [z for z in report["zones"] if z.strength in ("strong", "strongest")]
+    zones.sort(key=lambda z: (z.strength == "strongest", z.touches), reverse=True)
+    return [{"zone": z, "result": _zone_result(window, z, report["atr"])} for z in zones]
+
+
+def build_daily_text(report: dict, picks: list[dict], lang: str = i18n.DEFAULT_LANG) -> str:
+    """Итоги дня: только сильные зоны, что с ними стало."""
+    def t(key: str) -> str:
+        return i18n.hourly_text(lang, key)
+
+    stamp = report["time"]
+    lines = [
+        t("daily_title"),
+        t("stamp").format(
+            day=stamp.strftime("%d.%m"),
+            time=stamp.strftime("%H:%M"),
+            price=f"{report['price']:.2f}",
+        ),
+        t("range").format(
+            low=f"{report['low']:.2f}",
+            high=f"{report['high']:.2f}",
+            span=f"{report['high'] - report['low']:.2f}",
+        ),
+        t("change").format(
+            change=f"{report['change']:+.2f}",
+            pct=f"{report['change_pct']:+.2f}",
+        ),
+        "",
+    ]
+
+    if picks:
+        lines.append(t("daily_zones"))
+        held = broken = 0
+        for item in picks:
+            zone = item["zone"]
+            result = item["result"]
+            held += 1 if result == "held" else 0
+            broken += 1 if result == "broken" else 0
+            result_key = {"held": "daily_held", "broken": "daily_broken"}.get(
+                result, "daily_unknown"
+            )
+            lines.append(
+                t("daily_zone").format(
+                    price=f"{zone.price:.2f}",
+                    strength=t(zone.strength),
+                    touches=zone.touches,
+                    result=t(result_key),
+                )
+            )
+        lines.append("")
+        lines.append(t("daily_summary").format(held=held, broken=broken))
+    else:
+        lines.append(t("daily_none"))
+
+    bias = report["bias"]
+    bias_key = {"SELL": "bias_sell", "BUY": "bias_buy"}.get(bias, "bias_flat")
+    lines.append("")
+    lines.append(t(bias_key))
+    lines.append(t("note"))
+    return "\n".join(lines)
+
+
+def send_daily(
+    cfg: dict,
+    df: pd.DataFrame,
+    lang: str = i18n.DEFAULT_LANG,
+    hours: int = 24,
+    telegram: bool = True,
+    chart_dir: str | Path | None = None,
+    with_chart: bool = True,
+) -> dict:
+    """Итоги дня по сильным зонам. Уходит всем активным получателям."""
+    report = build_report(df, hours=hours)
+    picks = daily_picks(report, df)
+    chart_report = dict(report)
+    chart_report["zones"] = [item["zone"] for item in picks] or report["zones"]
+
+    def prepare(user_lang: str) -> tuple[str, Path | None]:
+        return _prepare(
+            chart_report,
+            user_lang,
+            df,
+            chart_dir,
+            with_chart,
+            title=i18n.hourly_text(user_lang, "daily_chart_title"),
+            prefix="daily",
+            text=build_daily_text(chart_report, picks, user_lang),
+        )
+
+    if not telegram:
+        text, image_path = prepare(lang)
+        print(text)
+        if image_path:
+            print(f"\n[картинка] {image_path}")
+        return report
+
+    from .telegram import TelegramBot
+
+    bot = TelegramBot.from_config(cfg)
+    if not bot.enabled:
+        print("[hourly] Telegram выключен")
+        print(build_daily_text(report, picks, lang))
+        return report
+
+    recipients = bot.active_recipients()
+    if not recipients:
+        print("[hourly] нет получателей")
+        return report
+
+    langs = {user_lang for _, user_lang in recipients}
+    cache = {user_lang: prepare(user_lang) for user_lang in langs}
+    _deliver(bot, recipients, cache)
     return report

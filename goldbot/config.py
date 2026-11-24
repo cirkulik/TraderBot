@@ -199,6 +199,13 @@ DEFAULTS: dict[str, Any] = {
         "chart": True,
         "to": "all",
     },
+    "daily": {
+        "enabled": True,
+        "time": "01:00",
+        "utc_offset": 3,
+        "hours": 24,
+        "chart": True,
+    },
 }
 
 
