@@ -185,12 +185,14 @@ MESSAGES = {
         "welcome": (
             "✅ GoldBot подключён.\n"
             "Сюда будут приходить сигналы XAUUSD M5 и результаты сделок.\n\n"
+            "/tf — какие отчёты получать (5, 15, 30, 60 мин)\n"
             "/stop — отключить сигналы\n"
             "/lang — сменить язык"
         ),
         "welcome_admin": (
             "✅ GoldBot подключён (администратор).\n"
             "Сигналы XAUUSD M5 и результаты сделок будут приходить сюда.\n\n"
+            "/tf — какие отчёты получать лично (5, 15, 30, 60 мин)\n"
             "/users — список пользователей\n"
             "/allow <id|@username> — выдать доступ\n"
             "/deny <id|@username> — отозвать доступ\n"
@@ -212,6 +214,7 @@ MESSAGES = {
         "help": (
             "Команды:\n"
             "/start — включить сигналы\n"
+            "/tf — какие отчёты получать (5, 15, 30, 60 мин)\n"
             "/stop — отключить сигналы\n"
             "/lang — сменить язык"
         ),
@@ -235,6 +238,10 @@ MESSAGES = {
         "channel_on": "✅ «{name}»: рассылка включена",
         "channel_off": "⏸ «{name}»: рассылка остановлена",
         "channel_intervals_set": "✅ «{name}»: отчёты — {period}",
+        "tf_choose": "🕒 Какие отчёты присылать?\nСейчас: {period}",
+        "tf_set": "✅ Отчёты: {period}",
+        "tf_all": "Все",
+        "tf_group": "В группе отчёты настраивает админ: /channel <id> 5 15 30 60",
         "startup_title": "🤖 GoldBot запущен",
         "startup_setups": "XAUUSD M5, сетапы: {setups}",
         "startup_wait": "Ждём сигналы: 09:00–18:00 (время сервера).",
@@ -265,12 +272,14 @@ MESSAGES = {
         "welcome": (
             "✅ GoldBot qoşuldu.\n"
             "Buraya XAUUSD M5 siqnalları və sövdələrin nəticələri gələcək.\n\n"
+            "/tf — hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
             "/stop — siqnalları söndür\n"
             "/lang — dili dəyiş"
         ),
         "welcome_admin": (
             "✅ GoldBot qoşuldu (administrator).\n"
             "XAUUSD M5 siqnalları və sövdələrin nəticələri buraya gələcək.\n\n"
+            "/tf — şəxsən hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
             "/users — istifadəçilərin siyahısı\n"
             "/allow <id|@username> — giriş ver\n"
             "/deny <id|@username> — girişi ləğv et\n"
@@ -292,6 +301,7 @@ MESSAGES = {
         "help": (
             "Komandalar:\n"
             "/start — siqnalları aç\n"
+            "/tf — hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
             "/stop — siqnalları söndür\n"
             "/lang — dili dəyiş"
         ),
@@ -315,6 +325,10 @@ MESSAGES = {
         "channel_on": "✅ «{name}»: yayım açıldı",
         "channel_off": "⏸ «{name}»: yayım dayandırıldı",
         "channel_intervals_set": "✅ «{name}»: hesabatlar — {period}",
+        "tf_choose": "🕒 Hansı hesabatlar gəlsin?\nİndi: {period}",
+        "tf_set": "✅ Hesabatlar: {period}",
+        "tf_all": "Hamısı",
+        "tf_group": "Qrupda hesabatları administrator təyin edir: /channel <id> 5 15 30 60",
         "startup_title": "🤖 GoldBot işə salındı",
         "startup_setups": "XAUUSD M5, setaplar: {setups}",
         "startup_wait": "Siqnalları gözləyirik: 09:00–18:00 (server vaxtı).",

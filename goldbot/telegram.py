@@ -427,7 +427,7 @@ class TelegramBot:
                 )
             return
 
-        self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard())
+        self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard(chat_id))
         self.notify_admin(
             f"Группа «{title}» подключена — туда пойдёт только разбор уровней, "
             f"сигналы остаются в личных сообщениях.\n"
@@ -491,12 +491,16 @@ class TelegramBot:
             command, arg = "/stop", ""
         elif button == "lang":
             command, arg = "/lang", ""
+        elif button == "tf":
+            command, arg = "/tf", ""
+        elif button == "channels":
+            command, arg = "/channels", ""
         elif text.startswith("/"):
             command, _, arg = text.partition(" ")
             command = command.split("@")[0].lower()
             arg = arg.strip()
         else:
-            self.send(chat_id, i18n.t(lang, "help"), self._main_keyboard())
+            self.send(chat_id, i18n.t(lang, "help"), self._main_keyboard(chat_id))
             return
 
         if command == "/start":
@@ -505,6 +509,8 @@ class TelegramBot:
             self._cmd_stop(chat_id, user or {}, lang)
         elif command == "/lang":
             self.send(chat_id, i18n.t(lang, "choose_lang"), self._lang_keyboard())
+        elif command in ("/tf", "/interval", "/timeframe"):
+            self._cmd_tf(chat_id, lang)
         elif command in ("/users", "/allow", "/deny", "/remove", "/channels", "/channel"):
             self._cmd_admin(command, arg, chat_id, lang)
         else:
@@ -519,16 +525,16 @@ class TelegramBot:
         if self.is_group_chat(chat_id):
             if user.get("status") == PAUSED:
                 self.store.set_status(chat_id, ACTIVE)
-            self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard())
+            self.send(chat_id, i18n.t(lang, "group_added"), self._main_keyboard(chat_id))
             return
 
         if self._is_admin(chat_id):
-            self.send(chat_id, i18n.t(lang, "welcome_admin"), self._main_keyboard())
+            self.send(chat_id, i18n.t(lang, "welcome_admin"), self._main_keyboard(chat_id))
             return
 
         if user.get("status") == PAUSED:
             self.store.set_status(chat_id, ACTIVE)
-        self.send(chat_id, i18n.t(lang, "welcome"), self._main_keyboard())
+        self.send(chat_id, i18n.t(lang, "welcome"), self._main_keyboard(chat_id))
 
     def _welcome_text(self, chat_id: str, lang: str) -> str:
         """Приветствие зависит от того, группа это или личный чат."""
@@ -540,10 +546,23 @@ class TelegramBot:
 
     def _cmd_stop(self, chat_id: str, user: dict, lang: str) -> None:
         if self._is_admin(chat_id):
-            self.send(chat_id, i18n.t(lang, "admin_no_stop"), self._main_keyboard())
+            self.send(chat_id, i18n.t(lang, "admin_no_stop"), self._main_keyboard(chat_id))
             return
         self.store.set_status(chat_id, PAUSED)
-        self.send(chat_id, i18n.t(lang, "paused"), self._main_keyboard())
+        self.send(chat_id, i18n.t(lang, "paused"), self._main_keyboard(chat_id))
+
+    def _cmd_tf(self, chat_id: str, lang: str) -> None:
+        """Личный выбор: какие отчёты присылать (5/15/30/60 или все)."""
+        if self.is_group_chat(chat_id):
+            self.send(chat_id, i18n.t(lang, "tf_group"))
+            return
+        user = self.store.get(chat_id) or {}
+        period = intervals.label(intervals.parse(user.get("intervals")), lang)
+        self.send(
+            chat_id,
+            i18n.t(lang, "tf_choose", period=period),
+            self._tf_keyboard(user, lang),
+        )
 
     def _cmd_admin(self, command: str, arg: str, chat_id: str, lang: str) -> None:
         if not self._is_admin(chat_id):
@@ -660,7 +679,7 @@ class TelegramBot:
             self.send(
                 target["chat_id"],
                 i18n.t(user_lang, "user_allowed_you"),
-                self._main_keyboard(),
+                self._main_keyboard(target["chat_id"]),
             )
 
     def _revoke(self, ref: str, target: dict | None, by_chat_id: str, by_lang: str) -> None:
@@ -738,17 +757,62 @@ class TelegramBot:
             self.send(
                 chat_id,
                 i18n.t(lang, "lang_set", name=i18n.LANGUAGE_NAMES[lang]),
-                self._main_keyboard(),
+                self._main_keyboard(chat_id),
             )
             if not had_lang:
-                self.send(chat_id, self._welcome_text(chat_id, lang), self._main_keyboard())
+                self.send(
+                    chat_id,
+                    self._welcome_text(chat_id, lang),
+                    self._main_keyboard(chat_id),
+                )
+            return
+
+        if data.startswith("tf:"):
+            lang = self._user_lang(user)
+            if self.is_group_chat(chat_id):
+                self.send(chat_id, i18n.t(lang, "tf_group"))
+                return
+            value = data.split(":", 1)[1]
+            wanted = (
+                list(intervals.SUPPORTED)
+                if value in intervals.ALL_ALIASES or value == "all"
+                else intervals.normalize([value])
+            )
+            if not wanted:
+                return
+            self.store.set_intervals(chat_id, wanted)
+            message_id = message.get("message_id")
+            if message_id:
+                api_call(
+                    self.token,
+                    "editMessageReplyMarkup",
+                    http_timeout=self.timeout,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=self._tf_keyboard(
+                        self.store.get(chat_id) or {}, lang
+                    ),
+                )
+            self.send(
+                chat_id,
+                i18n.t(lang, "tf_set", period=intervals.label(wanted, lang)),
+                self._main_keyboard(chat_id),
+            )
 
     # ---------------------------------------------------------------- утилиты
-    def _main_keyboard(self) -> str:
-        """Постоянная клавиатура с кнопками Start / Stop / Lang."""
+    def _main_keyboard(self, chat_id: str | None = None) -> str:
+        """Постоянная клавиатура: Start / Stop / Lang, в личке — TF, у админа — Channels."""
+        rows = [[{"text": "Start"}, {"text": "Stop"}, {"text": "Lang"}]]
+        extra: list[dict] = []
+        if chat_id and not self.is_group_chat(chat_id):
+            extra.append({"text": "TF"})
+        if chat_id and self._is_admin(chat_id):
+            extra.append({"text": "Channels"})
+        if extra:
+            rows.append(extra)
         return json.dumps(
             {
-                "keyboard": [[{"text": "Start"}, {"text": "Stop"}, {"text": "Lang"}]],
+                "keyboard": rows,
                 "resize_keyboard": True,
                 "is_persistent": True,
             }
@@ -769,6 +833,26 @@ class TelegramBot:
             for code, label in i18n.LANGUAGES.items()
         ]
         return json.dumps({"inline_keyboard": [buttons]})
+
+    def _tf_keyboard(self, user: dict, lang: str) -> str:
+        """Кнопки выбора отчётов: 5/15/30/60 и «все». Текущий выбор с галочкой."""
+        current = set(intervals.parse(user.get("intervals")))
+        buttons = [
+            {
+                "text": ("✅ " if current == {value} else "") + intervals.label([value], lang),
+                "callback_data": f"tf:{value}",
+            }
+            for value in intervals.SUPPORTED
+        ]
+        all_mark = "✅ " if current == set(intervals.SUPPORTED) else ""
+        return json.dumps(
+            {
+                "inline_keyboard": [
+                    buttons,
+                    [{"text": all_mark + i18n.t(lang, "tf_all"), "callback_data": "tf:all"}],
+                ]
+            }
+        )
 
     def _is_admin(self, chat_id: str | int) -> bool:
         return bool(self.admin_chat_id) and str(chat_id) == self.admin_chat_id
