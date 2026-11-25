@@ -507,6 +507,10 @@ HOURLY = {
         "daily_unknown": "без реакции",
         "daily_summary": "Итог: отбили {held}, пробили {broken}.",
         "daily_none": "За сутки сильных зон не было.",
+        "candles_title": "🕯 {tf} — {n} {word}",
+        "candle_line": "№{i} · хай {high} — {hi} кас. · лоу {low} — {lo} кас.",
+        "points_title": "Сильные точки:",
+        "point_line": "{mark} {price} — {touches} кас. · сильная зона на {side}",
     },
     "az": {
         "title": "📊 GOLD M5 — {hours} saatlıq icmal",
@@ -545,6 +549,10 @@ HOURLY = {
         "daily_unknown": "reaksiya yox",
         "daily_summary": "Yekun: sıçrayan {held}, qırılan {broken}.",
         "daily_none": "Gün ərzində güclü zona olmadı.",
+        "candles_title": "🕯 {tf} — {n} {word}",
+        "candle_line": "№{i} · high {high} — {hi} tox. · low {low} — {lo} tox.",
+        "points_title": "Güclü nöqtələr:",
+        "point_line": "{mark} {price} — {touches} tox. · {side} üçün güclü zona",
     },
 }
 
@@ -554,3 +562,14 @@ def hourly_text(lang: str, key: str) -> str:
     return HOURLY.get(lang, HOURLY[DEFAULT_LANG]).get(
         key, HOURLY[DEFAULT_LANG].get(key, key)
     )
+
+
+def candle_word(count: int, lang: str = DEFAULT_LANG) -> str:
+    """Слово «свеча» в правильном числе. По-азербайджански после числа — «şam»."""
+    if lang != "ru":
+        return "şam"
+    if count % 10 == 1 and count % 100 != 11:
+        return "свеча"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return "свечи"
+    return "свечей"

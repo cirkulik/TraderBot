@@ -263,6 +263,44 @@ class TelegramBot:
                 out.append((self.admin_chat_id, self._admin_lang()))
         return out
 
+    def report_recipients(self, due: set[int] | None = None) -> list[tuple[str, str, int]]:
+        """[(chat_id, lang, interval)] — кому и какой отчёт отправлять.
+
+        У каждого получателя свой набор интервалов (`5,30`). Если слот общий
+        для нескольких из них, уходит самый крупный: на :01 канал с 5 и 60
+        получает один часовой отчёт, а не два сообщения подряд.
+        """
+        out: list[tuple[str, str, int]] = []
+        seen: set[str] = set()
+        for user in self.store.active():
+            chat_id = str(user.get("chat_id") or "")
+            if not chat_id or chat_id == "None" or chat_id in seen:
+                continue
+            if not user.get("started"):
+                continue
+            own = set(intervals.parse(user.get("intervals")))
+            if due is None:
+                interval = max(own)
+            else:
+                common = own & due
+                if not common:
+                    continue
+                interval = max(common)
+            seen.add(chat_id)
+            out.append((chat_id, self._user_lang(user), interval))
+
+        if self.admin_chat_id and self.admin_chat_id not in seen:
+            admin = self.store.get(self.admin_chat_id) or {}
+            own = set(intervals.parse(admin.get("intervals")))
+            if due is None:
+                interval = max(own)
+            else:
+                common = own & due
+                interval = max(common) if common else None
+            if interval is not None:
+                out.append((self.admin_chat_id, self._admin_lang(), interval))
+        return out
+
     # ------------------------------------------------------------- настройка
     def prepare(self) -> str:
         """Снимает вебхук (иначе getUpdates не работает) и узнаёт username бота."""

@@ -353,9 +353,16 @@
     "lang": "az",
     "hours": 24,
     "minute": 1,
-    "intervals": [5, 15, 30, 60],
+    "intervals": [
+      5,
+      15,
+      30,
+      60
+    ],
     "chart": true,
-    "to": "all"
+    "to": "all",
+    "touch_tol_points": 15,
+    "touch_gap_points": 50
   },
   "daily": {
     "enabled": true,

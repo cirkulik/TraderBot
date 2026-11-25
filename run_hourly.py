@@ -196,7 +196,12 @@ def main() -> None:
         if args.daily:
             run_daily(cfg, args)
         else:
-            run_once(cfg, args)
+            preview = (
+                {args.interval}
+                if args.interval is not None and args.no_telegram
+                else None
+            )
+            run_once(cfg, args, preview)
         return
 
     if args.interval is not None:

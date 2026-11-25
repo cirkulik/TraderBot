@@ -198,6 +198,8 @@ DEFAULTS: dict[str, Any] = {
         "intervals": [5, 15, 30, 60],
         "chart": True,
         "to": "all",
+        "touch_tol_points": 15,
+        "touch_gap_points": 50,
     },
     "daily": {
         "enabled": True,

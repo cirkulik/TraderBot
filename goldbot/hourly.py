@@ -7,14 +7,17 @@ from pathlib import Path
 import pandas as pd
 
 from . import i18n
+from . import candles as candles_mod
 from .config import ROOT
 from .zones import build_report
 
 CHART_KEEP_DAYS = 7
 
 
-def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
-    """Собирает сообщение по данным отчёта."""
+def build_text(
+    report: dict, lang: str = i18n.DEFAULT_LANG, extra: list[str] | None = None
+) -> str:
+    """Собирает сообщение по данным отчёта. `extra` — блок свечей/сильных точек."""
     def t(key: str) -> str:
         return i18n.hourly_text(lang, key)
 
@@ -93,6 +96,10 @@ def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
             )
         )
 
+    if extra:
+        lines.append("")
+        lines.extend(extra)
+
     trends = report["trends"]
     lines.append("")
     lines.append(
@@ -107,6 +114,67 @@ def build_text(report: dict, lang: str = i18n.DEFAULT_LANG) -> str:
     )
     lines.append(t("note"))
     return "\n".join(lines)
+
+
+def candles_block(
+    df: pd.DataFrame, interval: int, lang: str, tol: float, gap: float
+) -> list[str]:
+    """Блок отчёта: свечи ТФ, касания хая/лоу и сильные точки."""
+    all_rows = candles_mod.touch_rows(df, interval, tol, gap)
+    count = candles_mod.display_count(interval)
+    if count == 1:
+        rows = all_rows[-1:]
+    else:
+        rows = candles_mod.active_rows(all_rows, min_touches=2, limit=count)
+    if not rows:
+        return []
+
+    def t(key: str) -> str:
+        return i18n.hourly_text(lang, key)
+
+    tf = candles_mod.tf_name(interval)
+    lines = [
+        t("candles_title").format(
+            tf=tf, n=len(rows), word=i18n.candle_word(len(rows), lang)
+        )
+    ]
+    for index, row in enumerate(rows, 1):
+        lines.append(
+            t("candle_line").format(
+                i=index,
+                high=f"{row['high']:.2f}",
+                hi=row["hi"],
+                low=f"{row['low']:.2f}",
+                lo=row["lo"],
+            )
+        )
+
+    price = float(df["close"].iloc[-1])
+    cluster = 3 * tol
+    points: list[dict] = []
+    for item in candles_mod.levels(rows, price, cluster=cluster):
+        if item["touches"] < 3:
+            continue
+        # две почти одинаковые точки не дублируем: оставляем сильнейшую
+        if any(abs(item["price"] - kept["price"]) <= cluster for kept in points):
+            continue
+        points.append(item)
+        if len(points) == 4:
+            break
+    if points:
+        lines.append("")
+        lines.append(t("points_title"))
+        for item in points:
+            lines.append(
+                t("point_line").format(
+                    mark="🔴" if item["side"] == "sell" else "🟢",
+                    price=f"{item['price']:.2f}",
+                    touches=item["touches"],
+                    side="SELL" if item["side"] == "sell" else "BUY",
+                    candles=item["candles"],
+                )
+            )
+    return lines
 
 
 def _cleanup_charts(out_dir: Path, keep_days: int = CHART_KEEP_DAYS) -> None:
@@ -125,6 +193,31 @@ def _cleanup_charts(out_dir: Path, keep_days: int = CHART_KEEP_DAYS) -> None:
                 continue
 
 
+def _chart(
+    report: dict,
+    lang: str,
+    df: pd.DataFrame,
+    chart_dir: str | Path | None,
+    with_chart: bool,
+    *,
+    title: str = "GOLD M5",
+    prefix: str = "hourly",
+) -> Path | None:
+    if not with_chart:
+        return None
+    try:
+        from .chart import render_chart
+
+        out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
+        name = f"{prefix}_{report['time']:%Y%m%d_%H%M}_{lang}.png"
+        image_path = render_chart(df, report, out_dir / name, lang=lang, title=title)
+        _cleanup_charts(out_dir)
+        return image_path
+    except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
+        print(f"[hourly] картинка не построена: {exc}")
+        return None
+
+
 def _prepare(
     report: dict,
     lang: str,
@@ -138,32 +231,31 @@ def _prepare(
 ) -> tuple[str, Path | None]:
     """Текст и картинка на одном языке."""
     body = text if text is not None else build_text(report, lang)
-    image_path: Path | None = None
-    if with_chart:
-        try:
-            from .chart import render_chart
-
-            out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
-            name = f"{prefix}_{report['time']:%Y%m%d_%H%M}_{lang}.png"
-            image_path = render_chart(df, report, out_dir / name, lang=lang, title=title)
-            _cleanup_charts(out_dir)
-        except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
-            print(f"[hourly] картинка не построена: {exc}")
+    image_path = _chart(
+        report, lang, df, chart_dir, with_chart, title=title, prefix=prefix
+    )
     return body, image_path
 
 
 def _deliver(
-    bot, recipients: list[tuple[str, str]], cache: dict[str, tuple[str, Path | None]]
+    bot,
+    recipients: list[tuple[str, str, int]],
+    texts: dict[tuple[str, int], str],
+    images: dict[str, Path | None],
+    *,
+    label: str | None = None,
 ) -> int:
     sent = 0
-    for chat_id, user_lang in recipients:
-        text, image_path = cache[user_lang]
+    for chat_id, user_lang, interval in recipients:
+        text = texts[(user_lang, interval)]
+        image_path = images.get(user_lang)
         if image_path and image_path.exists():
             ok = bot.send_photo(chat_id, image_path, caption=text)
         else:
             ok = bot.send(chat_id, text)
         sent += 1 if ok else 0
-        print(f"[hourly] {chat_id} ({user_lang}): {'ok' if ok else 'ошибка'}")
+        name = label or f"{interval}м"
+        print(f"[hourly] {chat_id} ({user_lang}, {name}): {'ok' if ok else 'ошибка'}")
     print(f"[hourly] отправлено {sent} из {len(recipients)}")
     return sent
 
@@ -185,9 +277,25 @@ def send_report(
     сейчас (5/15/30/60), остальным получателям сообщение не идёт.
     """
     report = build_report(df, hours=hours)
+    hourly_cfg = cfg.get("hourly", {}) or {}
+    tol = float(hourly_cfg.get("touch_tol_points", 15)) * 0.01
+    gap = float(hourly_cfg.get("touch_gap_points", 50)) * 0.01
+    configured = hourly_cfg.get("intervals") or [60]
+    default_interval = max(int(value) for value in (due or configured))
+
+    def text_for(user_lang: str, interval: int) -> str:
+        extra = candles_block(df, interval, user_lang, tol, gap)
+        return build_text(report, user_lang, extra=extra)
 
     if not telegram:
-        text, image_path = _prepare(report, lang, df, chart_dir, with_chart)
+        text, image_path = _prepare(
+            report,
+            lang,
+            df,
+            chart_dir,
+            with_chart,
+            text=text_for(lang, default_interval),
+        )
         print(text)
         if image_path:
             print(f"\n[картинка] {image_path}")
@@ -198,26 +306,27 @@ def send_report(
     bot = TelegramBot.from_config(cfg)
     if not bot.enabled:
         print("[hourly] Telegram выключен")
-        print(build_text(report, lang))
+        print(text_for(lang, default_interval))
         return report
 
     if to == "admin":
-        recipients = [(bot.admin_chat_id, lang)] if bot.admin_chat_id else []
+        recipients = (
+            [(bot.admin_chat_id, lang, default_interval)] if bot.admin_chat_id else []
+        )
     else:
-        recipients = bot.active_recipients(due)
+        recipients = bot.report_recipients(due)
         if not recipients and bot.admin_chat_id and due is None:
-            recipients = [(bot.admin_chat_id, lang)]
+            recipients = [(bot.admin_chat_id, lang, default_interval)]
 
     if not recipients:
         print("[hourly] нет получателей")
         return report
 
-    langs = {user_lang for _, user_lang in recipients}
-    cache: dict[str, tuple[str, Path | None]] = {
-        user_lang: _prepare(report, user_lang, df, chart_dir, with_chart)
-        for user_lang in langs
-    }
-    _deliver(bot, recipients, cache)
+    langs = {user_lang for _, user_lang, _ in recipients}
+    images = {user_lang: _chart(report, user_lang, df, chart_dir, with_chart) for user_lang in langs}
+    keys = {(user_lang, interval) for _, user_lang, interval in recipients}
+    texts = {key: text_for(*key) for key in keys}
+    _deliver(bot, recipients, texts, images)
     return report
 
 
@@ -352,14 +461,24 @@ def send_daily(
         return report
 
     if to == "admin" and bot.admin_chat_id:
-        recipients = [(bot.admin_chat_id, lang)]
+        recipients = [(bot.admin_chat_id, lang, 0)]
     else:
-        recipients = bot.active_recipients()
+        recipients = [
+            (chat_id, user_lang, 0) for chat_id, user_lang, _ in bot.report_recipients()
+        ]
     if not recipients:
         print("[hourly] нет получателей")
         return report
 
-    langs = {user_lang for _, user_lang in recipients}
-    cache = {user_lang: prepare(user_lang) for user_lang in langs}
-    _deliver(bot, recipients, cache)
+    langs = {user_lang for _, user_lang, _ in recipients}
+    prepared = {user_lang: prepare(user_lang) for user_lang in langs}
+    texts = {key: value[0] for key, value in prepared.items()}
+    images = {key: value[1] for key, value in prepared.items()}
+    _deliver(
+        bot,
+        recipients,
+        {(user_lang, 0): text for user_lang, text in texts.items()},
+        images,
+        label="day",
+    )
     return report
