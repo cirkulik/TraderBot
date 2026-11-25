@@ -17,7 +17,7 @@ CHART_KEEP_DAYS = 7
 def build_text(
     report: dict, lang: str = i18n.DEFAULT_LANG, extra: list[str] | None = None
 ) -> str:
-    """Собирает сообщение по данным отчёта. `extra` — блок свечей/сильных точек."""
+    """Собирает сообщение по данным отчёта. `extra` — блок сильных точек."""
     def t(key: str) -> str:
         return i18n.hourly_text(lang, key)
 
@@ -116,10 +116,17 @@ def build_text(
     return "\n".join(lines)
 
 
-def candles_block(
-    df: pd.DataFrame, interval: int, lang: str, tol: float, gap: float
-) -> list[str]:
-    """Блок отчёта: свечи ТФ, касания хая/лоу и сильные точки."""
+def strong_points(
+    df: pd.DataFrame,
+    interval: int,
+    tol: float,
+    gap: float,
+    *,
+    merge: float = 1.0,
+    min_touches: int = 3,
+    limit: int | None = None,
+) -> list[dict]:
+    """Сильные точки по свечам ТФ отчёта: близкие уровни слиты, слабые отброшены."""
     all_rows = candles_mod.touch_rows(df, interval, tol, gap)
     count = candles_mod.display_count(interval)
     if count == 1:
@@ -129,56 +136,53 @@ def candles_block(
     if not rows:
         return []
 
+    price = float(df["close"].iloc[-1])
+    points: list[dict] = []
+    for item in candles_mod.levels(rows, price, cluster=merge):
+        if item["touches"] < min_touches:
+            continue
+        # две почти одинаковые точки не дублируем: оставляем сильнейшую
+        if any(abs(item["price"] - kept["price"]) <= merge for kept in points):
+            continue
+        points.append(item)
+        if limit and len(points) >= limit:
+            break
+    return points
+
+
+def strong_block(
+    df: pd.DataFrame,
+    interval: int,
+    lang: str,
+    tol: float,
+    gap: float,
+    *,
+    merge: float = 1.0,
+    limit: int = 4,
+) -> list[str]:
+    """Блок отчёта: только сильные точки, без списка свечей."""
+    points = strong_points(df, interval, tol, gap, merge=merge, limit=limit)
+    if not points:
+        return []
+
     def t(key: str) -> str:
         return i18n.hourly_text(lang, key)
 
-    tf = candles_mod.tf_name(interval)
-    lines = [
-        t("candles_title").format(
-            tf=tf, n=len(rows), word=i18n.candle_word(len(rows), lang)
-        )
-    ]
-    for index, row in enumerate(rows, 1):
+    lines = [t("points_title").format(tf=candles_mod.tf_name(interval))]
+    for item in points:
         lines.append(
-            t("candle_line").format(
-                i=index,
-                high=f"{row['high']:.2f}",
-                hi=row["hi"],
-                low=f"{row['low']:.2f}",
-                lo=row["lo"],
+            t("point_line").format(
+                mark="🔴" if item["side"] == "sell" else "🟢",
+                price=f"{item['price']:.2f}",
+                touches=item["touches"],
+                side="SELL" if item["side"] == "sell" else "BUY",
             )
         )
-
-    price = float(df["close"].iloc[-1])
-    cluster = 3 * tol
-    points: list[dict] = []
-    for item in candles_mod.levels(rows, price, cluster=cluster):
-        if item["touches"] < 3:
-            continue
-        # две почти одинаковые точки не дублируем: оставляем сильнейшую
-        if any(abs(item["price"] - kept["price"]) <= cluster for kept in points):
-            continue
-        points.append(item)
-        if len(points) == 4:
-            break
-    if points:
-        lines.append("")
-        lines.append(t("points_title"))
-        for item in points:
-            lines.append(
-                t("point_line").format(
-                    mark="🔴" if item["side"] == "sell" else "🟢",
-                    price=f"{item['price']:.2f}",
-                    touches=item["touches"],
-                    side="SELL" if item["side"] == "sell" else "BUY",
-                    candles=item["candles"],
-                )
-            )
     return lines
 
 
 def _cleanup_charts(out_dir: Path, keep_days: int = CHART_KEEP_DAYS) -> None:
-    """Убирает старые картинки: при отправке каждые 5 минут их копится много."""
+    """Убирает старые картинки: при отправке каждые 30 минут их копится много."""
     deadline = time.time() - keep_days * 86400
     for pattern in ("hourly_*.png", "daily_*.png"):
         try:
@@ -202,6 +206,9 @@ def _chart(
     *,
     title: str = "GOLD M5",
     prefix: str = "hourly",
+    interval: int | None = None,
+    points: list[dict] | None = None,
+    points_style: str = "A",
 ) -> Path | None:
     if not with_chart:
         return None
@@ -209,8 +216,17 @@ def _chart(
         from .chart import render_chart
 
         out_dir = Path(chart_dir) if chart_dir else ROOT / "data" / "charts"
-        name = f"{prefix}_{report['time']:%Y%m%d_%H%M}_{lang}.png"
-        image_path = render_chart(df, report, out_dir / name, lang=lang, title=title)
+        suffix = f"_{interval}" if interval is not None else ""
+        name = f"{prefix}_{report['time']:%Y%m%d_%H%M}_{lang}{suffix}.png"
+        image_path = render_chart(
+            df,
+            report,
+            out_dir / name,
+            lang=lang,
+            title=title,
+            points=points,
+            points_style=points_style,
+        )
         _cleanup_charts(out_dir)
         return image_path
     except Exception as exc:  # noqa: BLE001 - картинка не должна ломать отчёт
@@ -241,14 +257,14 @@ def _deliver(
     bot,
     recipients: list[tuple[str, str, int]],
     texts: dict[tuple[str, int], str],
-    images: dict[str, Path | None],
+    images: dict[tuple[str, int], Path | None],
     *,
     label: str | None = None,
 ) -> int:
     sent = 0
     for chat_id, user_lang, interval in recipients:
         text = texts[(user_lang, interval)]
-        image_path = images.get(user_lang)
+        image_path = images.get((user_lang, interval))
         if image_path and image_path.exists():
             ok = bot.send_photo(chat_id, image_path, caption=text)
         else:
@@ -274,7 +290,7 @@ def send_report(
     """Считает отчёт и отправляет.
 
     `to="all"` — каждому на его языке; `due` — какие интервалы отправляются
-    сейчас (5/15/30/60), остальным получателям сообщение не идёт.
+    сейчас (30/60), остальным получателям сообщение не идёт.
     """
     report = build_report(df, hours=hours)
     hourly_cfg = cfg.get("hourly", {}) or {}
@@ -282,21 +298,32 @@ def send_report(
     gap = float(hourly_cfg.get("touch_gap_points", 50)) * 0.01
     configured = hourly_cfg.get("intervals") or [60]
     default_interval = max(int(value) for value in (due or configured))
+    merge = float(hourly_cfg.get("strong_merge_points", 100)) * 0.01
+    points_style = str(hourly_cfg.get("points_style", "A"))
+    chart_points = int(hourly_cfg.get("points_limit", 3))
 
     def text_for(user_lang: str, interval: int) -> str:
-        extra = candles_block(df, interval, user_lang, tol, gap)
+        extra = strong_block(df, interval, user_lang, tol, gap, merge=merge, limit=4)
         return build_text(report, user_lang, extra=extra)
 
-    if not telegram:
-        text, image_path = _prepare(
+    def chart_for(user_lang: str, interval: int) -> Path | None:
+        points = strong_points(
+            df, interval, tol, gap, merge=merge, limit=chart_points
+        )
+        return _chart(
             report,
-            lang,
+            user_lang,
             df,
             chart_dir,
             with_chart,
-            text=text_for(lang, default_interval),
+            interval=interval,
+            points=points,
+            points_style=points_style,
         )
-        print(text)
+
+    if not telegram:
+        print(text_for(lang, default_interval))
+        image_path = chart_for(lang, default_interval)
         if image_path:
             print(f"\n[картинка] {image_path}")
         return report
@@ -322,10 +349,9 @@ def send_report(
         print("[hourly] нет получателей")
         return report
 
-    langs = {user_lang for _, user_lang, _ in recipients}
-    images = {user_lang: _chart(report, user_lang, df, chart_dir, with_chart) for user_lang in langs}
     keys = {(user_lang, interval) for _, user_lang, interval in recipients}
     texts = {key: text_for(*key) for key in keys}
+    images = {key: chart_for(*key) for key in keys}
     _deliver(bot, recipients, texts, images)
     return report
 
@@ -472,13 +498,7 @@ def send_daily(
 
     langs = {user_lang for _, user_lang, _ in recipients}
     prepared = {user_lang: prepare(user_lang) for user_lang in langs}
-    texts = {key: value[0] for key, value in prepared.items()}
-    images = {key: value[1] for key, value in prepared.items()}
-    _deliver(
-        bot,
-        recipients,
-        {(user_lang, 0): text for user_lang, text in texts.items()},
-        images,
-        label="day",
-    )
+    texts = {(user_lang, 0): value[0] for user_lang, value in prepared.items()}
+    images = {(user_lang, 0): value[1] for user_lang, value in prepared.items()}
+    _deliver(bot, recipients, texts, images, label="day")
     return report

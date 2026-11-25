@@ -215,7 +215,7 @@ class SubscriberStore:
         return self.upsert(chat_id, lang=lang)
 
     def set_intervals(self, chat_id: str | int, values) -> dict | None:
-        """Какие отправления получает чат: 5/15/30/60 минут."""
+        """Какие отправления получает чат: 30/60 минут."""
         if self.get(chat_id) is None:
             return None
         return self.upsert(chat_id, intervals=intervals.pack(values))

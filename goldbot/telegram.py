@@ -241,7 +241,7 @@ class TelegramBot:
     def active_recipients(self, due: set[int] | None = None) -> list[tuple[str, str]]:
         """[(chat_id, lang)] — все, кому бот имеет право писать.
 
-        `due` — какие интервалы отправляются в этот слот (5/15/30/60). Если
+        `due` — какие интервалы отправляются в этот слот (30/60). Если
         передан, остаются только те, у кого такой интервал включён.
         Подписчики, которые ни разу не нажимали Start, пропускаются: Telegram
         не даёт им писать. Админ добавляется, даже если его нет в базе.
@@ -422,7 +422,7 @@ class TelegramBot:
                     f"✅ Канал «{title}» подключён.\n"
                     f"Анализ XAUUSD M5 будет уходить по расписанию (по умолчанию раз в час).\n"
                     f"Язык: {i18n.LANGUAGE_NAMES.get(lang, lang)}.\n"
-                    f"Изменить: /channel {chat_id} ru|az · 5 15 30 60 · on|off\n"
+                    f"Изменить: /channel {chat_id} ru|az · 30 60 · on|off\n"
                     f"Список: /channels"
                 )
             return
@@ -552,7 +552,7 @@ class TelegramBot:
         self.send(chat_id, i18n.t(lang, "paused"), self._main_keyboard(chat_id))
 
     def _cmd_tf(self, chat_id: str, lang: str) -> None:
-        """Личный выбор: какие отчёты присылать (5/15/30/60 или все)."""
+        """Личный выбор: какие отчёты присылать (30/60 или все)."""
         if self.is_group_chat(chat_id):
             self.send(chat_id, i18n.t(lang, "tf_group"))
             return
@@ -835,7 +835,7 @@ class TelegramBot:
         return json.dumps({"inline_keyboard": [buttons]})
 
     def _tf_keyboard(self, user: dict, lang: str) -> str:
-        """Кнопки выбора отчётов: 5/15/30/60 и «все». Текущий выбор с галочкой."""
+        """Кнопки выбора отчётов: 30/60 и «все». Текущий выбор с галочкой."""
         current = set(intervals.parse(user.get("intervals")))
         buttons = [
             {

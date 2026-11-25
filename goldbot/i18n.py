@@ -185,14 +185,14 @@ MESSAGES = {
         "welcome": (
             "✅ GoldBot подключён.\n"
             "Сюда будут приходить сигналы XAUUSD M5 и результаты сделок.\n\n"
-            "/tf — какие отчёты получать (5, 15, 30, 60 мин)\n"
+            "/tf — какие отчёты получать (30, 60 мин)\n"
             "/stop — отключить сигналы\n"
             "/lang — сменить язык"
         ),
         "welcome_admin": (
             "✅ GoldBot подключён (администратор).\n"
             "Сигналы XAUUSD M5 и результаты сделок будут приходить сюда.\n\n"
-            "/tf — какие отчёты получать лично (5, 15, 30, 60 мин)\n"
+            "/tf — какие отчёты получать лично (30, 60 мин)\n"
             "/users — список пользователей\n"
             "/allow <id|@username> — выдать доступ\n"
             "/deny <id|@username> — отозвать доступ\n"
@@ -200,7 +200,7 @@ MESSAGES = {
             "/channels — список каналов\n"
             "/channel <id> ru|az — язык канала\n"
             "/channel <id> on|off — вкл/выкл канал\n"
-            "/channel <id> 5 15 30 60 — какие отчёты слать\n"
+            "/channel <id> 30 60 — какие отчёты слать\n"
             "/lang — сменить язык"
         ),
         "paused": "⏸ Сигналы отключены. Отправьте /start, чтобы включить снова.",
@@ -214,7 +214,7 @@ MESSAGES = {
         "help": (
             "Команды:\n"
             "/start — включить сигналы\n"
-            "/tf — какие отчёты получать (5, 15, 30, 60 мин)\n"
+            "/tf — какие отчёты получать (30, 60 мин)\n"
             "/stop — отключить сигналы\n"
             "/lang — сменить язык"
         ),
@@ -228,10 +228,10 @@ MESSAGES = {
         "channels_hint": (
             "/channel <id> ru|az — язык канала\n"
             "/channel <id> on|off — включить или остановить\n"
-            "/channel <id> 5 15 30 60 — какие отчёты слать (all — все)"
+            "/channel <id> 30 60 — какие отчёты слать (all — все)"
         ),
         "channel_usage": (
-            "Формат: /channel <id> ru|az · on|off · 5 15 30 60 (или all)"
+            "Формат: /channel <id> ru|az · on|off · 30 60 (или all)"
         ),
         "channel_not_found": "Канал {ref} не найден. Список: /channels",
         "channel_lang_set": "✅ «{name}»: язык {code}",
@@ -241,7 +241,7 @@ MESSAGES = {
         "tf_choose": "🕒 Какие отчёты присылать?\nСейчас: {period}",
         "tf_set": "✅ Отчёты: {period}",
         "tf_all": "Все",
-        "tf_group": "В группе отчёты настраивает админ: /channel <id> 5 15 30 60",
+        "tf_group": "В группе отчёты настраивает админ: /channel <id> 30 60",
         "startup_title": "🤖 GoldBot запущен",
         "startup_setups": "XAUUSD M5, сетапы: {setups}",
         "startup_wait": "Ждём сигналы: 09:00–18:00 (время сервера).",
@@ -272,14 +272,14 @@ MESSAGES = {
         "welcome": (
             "✅ GoldBot qoşuldu.\n"
             "Buraya XAUUSD M5 siqnalları və sövdələrin nəticələri gələcək.\n\n"
-            "/tf — hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
+            "/tf — hansı hesabatlar gəlsin (30, 60 dəq)\n"
             "/stop — siqnalları söndür\n"
             "/lang — dili dəyiş"
         ),
         "welcome_admin": (
             "✅ GoldBot qoşuldu (administrator).\n"
             "XAUUSD M5 siqnalları və sövdələrin nəticələri buraya gələcək.\n\n"
-            "/tf — şəxsən hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
+            "/tf — şəxsən hansı hesabatlar gəlsin (30, 60 dəq)\n"
             "/users — istifadəçilərin siyahısı\n"
             "/allow <id|@username> — giriş ver\n"
             "/deny <id|@username> — girişi ləğv et\n"
@@ -287,7 +287,7 @@ MESSAGES = {
             "/channels — kanalların siyahısı\n"
             "/channel <id> ru|az — kanalın dili\n"
             "/channel <id> on|off — kanalı aç/bağla\n"
-            "/channel <id> 5 15 30 60 — hansı hesabatlar getsin\n"
+            "/channel <id> 30 60 — hansı hesabatlar getsin\n"
             "/lang — dili dəyiş"
         ),
         "paused": "⏸ Siqnallar söndürüldü. Yenidən açmaq üçün /start göndərin.",
@@ -301,7 +301,7 @@ MESSAGES = {
         "help": (
             "Komandalar:\n"
             "/start — siqnalları aç\n"
-            "/tf — hansı hesabatlar gəlsin (5, 15, 30, 60 dəq)\n"
+            "/tf — hansı hesabatlar gəlsin (30, 60 dəq)\n"
             "/stop — siqnalları söndür\n"
             "/lang — dili dəyiş"
         ),
@@ -315,10 +315,10 @@ MESSAGES = {
         "channels_hint": (
             "/channel <id> ru|az — kanalın dili\n"
             "/channel <id> on|off — aç və ya dayandır\n"
-            "/channel <id> 5 15 30 60 — hansı hesabatlar getsin (all — hamısı)"
+            "/channel <id> 30 60 — hansı hesabatlar getsin (all — hamısı)"
         ),
         "channel_usage": (
-            "Format: /channel <id> ru|az · on|off · 5 15 30 60 (və ya all)"
+            "Format: /channel <id> ru|az · on|off · 30 60 (və ya all)"
         ),
         "channel_not_found": "Kanal {ref} tapılmadı. Siyahı: /channels",
         "channel_lang_set": "✅ «{name}»: dil {code}",
@@ -328,7 +328,7 @@ MESSAGES = {
         "tf_choose": "🕒 Hansı hesabatlar gəlsin?\nİndi: {period}",
         "tf_set": "✅ Hesabatlar: {period}",
         "tf_all": "Hamısı",
-        "tf_group": "Qrupda hesabatları administrator təyin edir: /channel <id> 5 15 30 60",
+        "tf_group": "Qrupda hesabatları administrator təyin edir: /channel <id> 30 60",
         "startup_title": "🤖 GoldBot işə salındı",
         "startup_setups": "XAUUSD M5, setaplar: {setups}",
         "startup_wait": "Siqnalları gözləyirik: 09:00–18:00 (server vaxtı).",
@@ -521,10 +521,9 @@ HOURLY = {
         "daily_unknown": "без реакции",
         "daily_summary": "Итог: отбили {held}, пробили {broken}.",
         "daily_none": "За сутки сильных зон не было.",
-        "candles_title": "🕯 {tf} — {n} {word}",
-        "candle_line": "№{i} · хай {high} — {hi} кас. · лоу {low} — {lo} кас.",
-        "points_title": "Сильные точки:",
+        "points_title": "Сильные точки {tf}:",
         "point_line": "{mark} {price} — {touches} кас. · сильная зона на {side}",
+        "point_short": "{price} · {touches} кас.",
     },
     "az": {
         "title": "📊 GOLD M5 — {hours} saatlıq icmal",
@@ -563,10 +562,9 @@ HOURLY = {
         "daily_unknown": "reaksiya yox",
         "daily_summary": "Yekun: sıçrayan {held}, qırılan {broken}.",
         "daily_none": "Gün ərzində güclü zona olmadı.",
-        "candles_title": "🕯 {tf} — {n} {word}",
-        "candle_line": "№{i} · high {high} — {hi} tox. · low {low} — {lo} tox.",
-        "points_title": "Güclü nöqtələr:",
+        "points_title": "Güclü nöqtələr {tf}:",
         "point_line": "{mark} {price} — {touches} tox. · {side} üçün güclü zona",
+        "point_short": "{price} · {touches} tox.",
     },
 }
 
@@ -576,14 +574,3 @@ def hourly_text(lang: str, key: str) -> str:
     return HOURLY.get(lang, HOURLY[DEFAULT_LANG]).get(
         key, HOURLY[DEFAULT_LANG].get(key, key)
     )
-
-
-def candle_word(count: int, lang: str = DEFAULT_LANG) -> str:
-    """Слово «свеча» в правильном числе. По-азербайджански после числа — «şam»."""
-    if lang != "ru":
-        return "şam"
-    if count % 10 == 1 and count % 100 != 11:
-        return "свеча"
-    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
-        return "свечи"
-    return "свечей"

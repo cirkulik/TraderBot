@@ -67,8 +67,10 @@ def render_chart(
     path: str | Path,
     lang: str = i18n.DEFAULT_LANG,
     title: str = "GOLD M5",
+    points: list[dict] | None = None,
+    points_style: str = "A",
 ) -> Path:
-    """Рисует свечи окна, зоны и последнюю цену. Возвращает путь к PNG."""
+    """Рисует свечи окна, зоны, сильные точки и последнюю цену. Возвращает путь к PNG."""
     window = df[df["time"] >= report["time"] - pd.Timedelta(hours=report["hours"])]
     window = window.reset_index(drop=True)
     if window.empty:
@@ -136,6 +138,30 @@ def render_chart(
                     "w": tw + 10,
                     "h": th + 6,
                     "kind": "zone",
+                }
+            )
+    style = str(points_style or "A").upper()
+    point_font = _font(13, bold=True)
+    if style == "A" and points:
+        for point in points:
+            y = y_of(point["price"])
+            if not (TOP <= y <= TOP + plot_h):
+                continue
+            text = i18n.hourly_text(lang, "point_short").format(
+                price=f"{point['price']:.2f}", touches=point["touches"]
+            )
+            tw, th = _text_size(text, point_font)
+            items.append(
+                {
+                    "y": y,
+                    "zone": None,
+                    "point": point,
+                    "text": text,
+                    "font": point_font,
+                    "w": tw + 10,
+                    "h": th + 4,
+                    "kind": "point",
+                    "color": SELL if point["side"] == "sell" else BUY,
                 }
             )
     last_text = f"{report['price']:.2f}"
@@ -208,17 +234,22 @@ def render_chart(
             x += item["w"] + ROW_STEP
 
     for item in items:
-        zone = item["zone"]
-        if zone is None:
+        if item["kind"] == "last":
             continue
-        color = SELL if zone.side == "sell" else BUY
-        width = 2 if zone.strength in ("strong", "strongest") else 1
-        _dashed(draw, LEFT, LEFT + plot_w, int(item["y"]), color, width=width)
+        if item["kind"] == "zone":
+            zone = item["zone"]
+            color = SELL if zone.side == "sell" else BUY
+            width = 2 if zone.strength in ("strong", "strongest") else 1
+            _dashed(draw, LEFT, LEFT + plot_w, int(item["y"]), color, width=width)
+        else:
+            color = item["color"]
+            _dashed(
+                draw, LEFT, LEFT + plot_w, int(item["y"]), color, width=1, dash=2, gap=4
+            )
         item["color"] = color
 
     for item in items:
-        zone = item["zone"]
-        if zone is None:
+        if item["kind"] == "last":
             continue
         top = item["label_y"] - item["h"] / 2
         draw.rectangle(
@@ -248,6 +279,52 @@ def render_chart(
         font=last_item["font"],
         anchor="lm",
     )
+
+    # Вариант B: номера точек у правого края + легенда сверху
+    if style == "B" and points:
+        f_legend = _font(13)
+        parts: list[str] = []
+        placed: list[tuple[int, float]] = []
+        for index, point in enumerate(points, 1):
+            label = i18n.hourly_text(lang, "point_short").format(
+                price=f"{point['price']:.2f}", touches=point["touches"]
+            )
+            parts.append(f"{index} · {label}")
+            y = y_of(point["price"])
+            if not (TOP <= y <= TOP + plot_h):
+                continue
+            color = SELL if point["side"] == "sell" else BUY
+            _dashed(
+                draw, LEFT, LEFT + plot_w, int(y), color, width=1, dash=2, gap=5
+            )
+            # близкие точки разводим по «дорожкам», иначе кружки наезжают
+            lane = 0
+            while any(lane == other and abs(y - other_y) < 22 for other, other_y in placed):
+                lane += 1
+            placed.append((lane, y))
+            x = LEFT + plot_w - 16 - lane * 22
+            draw.ellipse([x - 10, y - 10, x + 10, y + 10], fill=color)
+            draw.text(
+                (x, y), str(index), fill=(10, 15, 22), font=_font(13, bold=True), anchor="mm"
+            )
+
+        lines: list[list[str]] = [[]]
+        limit_w = W - 2 * LEFT
+        for part in parts:
+            candidate = "   ".join(lines[-1] + [part])
+            tw, _ = _text_size(candidate, f_legend)
+            if lines[-1] and tw > limit_w and len(lines) < 2:
+                lines.append([part])
+            else:
+                lines[-1].append(part)
+        for line_index, line in enumerate(lines):
+            draw.text(
+                (LEFT, 52 + line_index * 18),
+                "   ".join(line),
+                fill=TEXT,
+                font=f_legend,
+                anchor="lm",
+            )
 
     # Заголовок
     bias = report["bias"]

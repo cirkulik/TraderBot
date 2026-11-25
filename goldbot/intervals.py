@@ -1,12 +1,14 @@
-"""Интервалы отправки анализа: 5, 15, 30 и 60 минут.
+"""Интервалы отправки анализа: 30 и 60 минут.
 
-В базе у каждого получателя лежит строка вида `5,30` — какие отправления
+В базе у каждого получателя лежит строка вида `30,60` — какие отправления
 он хочет получать. Пустое значение читается как значение по умолчанию
 (60 минут), чтобы старые записи продолжали работать как раньше.
+
+Пяти- и пятнадцатиминутные отчёты отключены: остались только M30 и H1.
 """
 from __future__ import annotations
 
-SUPPORTED = (5, 15, 30, 60)
+SUPPORTED = (30, 60)
 DEFAULT = 60
 
 ALL_ALIASES = ("all", "все", "всё", "hamisi", "hamısı")
@@ -26,7 +28,7 @@ def normalize(values) -> list[int]:
 
 
 def parse(text, default: int = DEFAULT) -> list[int]:
-    """Разбирает `5,30` / `5 30` / `every 5 30` / `all`. Пусто — default."""
+    """Разбирает `30,60` / `30 60` / `every 30 60` / `all`. Пусто — default."""
     raw = str(text or "").strip().lower().replace(",", " ").replace(";", " ")
     if raw.startswith("every "):
         raw = raw[6:].strip()
@@ -38,12 +40,12 @@ def parse(text, default: int = DEFAULT) -> list[int]:
 
 
 def pack(values) -> str:
-    """Строка для базы: `5,30`."""
+    """Строка для базы: `30,60`."""
     return ",".join(str(value) for value in normalize(values))
 
 
 def label(values, lang: str = "ru") -> str:
-    """Человеческий вид: `5, 30 мин` или `5, 30 dəq`."""
+    """Человеческий вид: `30, 60 мин` или `30, 60 dəq`."""
     items = sorted(normalize(values))
     if not items:
         return "—"

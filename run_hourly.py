@@ -4,14 +4,14 @@
     python run_hourly.py --once                     # один отчёт, отправить всем
     python run_hourly.py --once --no-telegram       # только в консоль + картинка
     python run_hourly.py --loop                     # расписание из конфига
-    python run_hourly.py --loop --intervals 5,15,30,60
-    python run_hourly.py --loop --intervals 15 --minute 5   # :05, :20, :35, :50
+    python run_hourly.py --loop --intervals 30,60
+    python run_hourly.py --loop --intervals 30 --minute 5   # :05, :35
     python run_hourly.py --once --daily             # итоги дня в консоль
     python run_hourly.py --once --csv data/XAUUSD_M5.csv
 
-Расписание: поддерживаются 5, 15, 30 и 60 минут. Цикл просыпается на самом
-коротком интервале, а дальше смотрит, какие интервалы наступили в этот слот.
-Кому что уходит — настраивается по каналам: /channel <id> 5 30.
+Расписание: поддерживаются 30 и 60 минут. Цикл просыпается на самом коротком
+интервале, а дальше смотрит, какие интервалы наступили в этот слот.
+Кому что уходит — настраивается по каналам: /channel <id> 30 60.
 
 Отдельно раз в сутки (по умолчанию 01:00 МСК, `daily`) уходит разбор сильных
 зон за день — всем каналам, независимо от их интервалов.
@@ -211,7 +211,7 @@ def main() -> None:
     else:
         slots = intervals.normalize(hourly_cfg.get("intervals") or [])
     if not slots:
-        parser.error("поддерживаются интервалы 5, 15, 30, 60")
+        parser.error("поддерживаются интервалы 30 и 60")
 
     step = min(slots)
     minute = args.minute % step
