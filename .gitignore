@@ -24,3 +24,9 @@ venv/
 # Системное
 .DS_Store
 Thumbs.db
+# research/ не публикуем
+research/
+
+# локальные бэкапы config.json
+config.before-*.json
+config.old-*.json
