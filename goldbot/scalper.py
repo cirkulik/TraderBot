@@ -201,8 +201,8 @@ class Scalper:
         self.magic = int(sc.get("magic", 770002))
         self.lot = float(sc.get("lot", 0.01))
 
-        self.refresh_seconds = max(10, int(sc.get("refresh_seconds", 60)))
-        self.poll_seconds = max(0.2, float(sc.get("poll_seconds", 1)))
+        self.refresh_seconds = max(10, int(sc.get("refresh_seconds", 15)))
+        self.poll_seconds = max(0.2, float(sc.get("poll_seconds", 0.25)))
         self.history_bars = max(500, int(sc.get("history_bars", 3000)))
         self.order_ttl = max(1, int(sc.get("order_ttl_minutes", 60)))
         self.max_positions = max(1, int(sc.get("max_positions", 2)))
@@ -217,9 +217,10 @@ class Scalper:
         self.max_levels_per_side = max(1, int(sc.get("max_levels_per_side", 2)))
         self.cooldown_minutes = max(0, int(sc.get("cooldown_minutes", 20)))
 
-        self.level_min_distance = float(sc.get("level_min_distance", 0.30))
-        self.level_max_distance = float(sc.get("level_max_distance", 12.0))
+        self.level_min_distance = float(sc.get("level_min_distance", 0.10))
+        self.level_max_distance = float(sc.get("level_max_distance", 30.0))
         self.level_move_tolerance = float(sc.get("level_move_tolerance", 0.50))
+        self.pending_cancel_guard = float(sc.get("pending_cancel_guard", 0.50))
         self.sl_buffer = float(sc.get("sl_buffer", 0.30))
         self.sl_atr_buffer = float(sc.get("sl_atr_buffer", 0.15))
         self.min_risk = float(sc.get("min_risk", 0.50))
@@ -235,7 +236,7 @@ class Scalper:
         self.max_trade_minutes = float(sc.get("max_trade_minutes", 20))
         self.max_spread_points = float(sc.get("max_spread_points", 35))
 
-        self.min_score = float(sc.get("min_score", 50))
+        self.min_score = float(sc.get("min_score", 35))
         self.min_touches = int(sc.get("min_touches", 3))
         self.live_min_touches = int(sc.get("live_min_touches", 2))
         self.point_candles = int(sc.get("point_candles", 6))
@@ -289,6 +290,7 @@ class Scalper:
         self.last_refresh = 0.0
         self._known_positions: set[int] = set()
         self._last_place_log = 0.0
+        self._last_skip_log = 0.0
         self._dry_orders: dict[str, list[tuple[float, float]]] = {}
         self._bot = self._make_bot()
 
@@ -888,7 +890,11 @@ class Scalper:
         return ok
 
     def _select_levels(
-        self, side: str, price: float, limit: int
+        self,
+        side: str,
+        price: float,
+        limit: int,
+        skips: list[str] | None = None,
     ) -> list[Level]:
         """Лучшие уровни на сторону для заготовок (без близких дублей)."""
         candidates: list[tuple[float, float, Level]] = []
@@ -897,12 +903,20 @@ class Scalper:
             if level_side != side:
                 continue
             distance = abs(level.price - price)
-            if distance < self.level_min_distance or distance > self.level_max_distance:
+            if distance < self.level_min_distance:
+                if skips is not None:
+                    skips.append(
+                        f"{side} {level.price:.2f}: too_close {distance:.2f}$"
+                    )
+                continue
+            if distance > self.level_max_distance:
                 continue
             score = float(level.score)
             if score < self.min_score:
                 continue
             if self._is_used(side, level.price):
+                if skips is not None:
+                    skips.append(f"{side} {level.price:.2f}: used")
                 continue
             candidates.append((score, distance, level))
 
@@ -919,6 +933,16 @@ class Scalper:
             if len(selected) >= limit:
                 break
         return selected
+
+    def _log_skips(self, skips: list[str]) -> None:
+        """Пишет причины пропусков, но не чаще раза в refresh_seconds."""
+        if not skips:
+            return
+        if time.time() - self._last_skip_log < self.refresh_seconds:
+            return
+        self._last_skip_log = time.time()
+        unique = list(dict.fromkeys(skips))
+        self.log("пропуск: " + "; ".join(unique[:8]))
 
     def _dry_prices(self, side: str) -> list[float]:
         """Цены «виртуальных» заготовок в dry-run, чтобы не спамить лог."""
@@ -943,6 +967,12 @@ class Scalper:
         mid = (float(tick.bid) + float(tick.ask)) / 2.0
         spread = self._spread_points(tick)
         min_gap = max(self.stops_level * self.point, self.level_min_distance)
+        cancel_guard = max(
+            self.pending_cancel_guard,
+            self.stops_level * self.point,
+            spread * self.point * 2,
+        )
+        skips: list[str] = []
 
         # Просроченные заготовки снимаем всегда, даже при закрытом рынке.
         for order in list(orders.values()):
@@ -965,7 +995,13 @@ class Scalper:
             return
 
         # Рынок закрыт или спред широкий — новые заготовки не ставим.
-        if not self._market_ok(tick) or spread > self.max_spread_points:
+        if not self._market_ok(tick):
+            self._log_skips(["рынок закрыт / ночь / выходные"])
+            return
+        if spread > self.max_spread_points:
+            self._log_skips(
+                [f"спред {spread:.0f} п. > {self.max_spread_points:.0f}"]
+            )
             return
 
         side_counts = {"buy": 0, "sell": 0}
@@ -975,15 +1011,20 @@ class Scalper:
                 side_counts[side] += 1
 
         for side in ("buy", "sell"):
-            blocked = (
-                int(self.state["attempts"].get(side, 0)) >= self.max_levels_per_side
-                or now < int(self.state["cooldown_until"].get(side, 0))
-            )
+            attempts = int(self.state["attempts"].get(side, 0))
+            cooldown_until = int(self.state["cooldown_until"].get(side, 0))
+            blocked = attempts >= self.max_levels_per_side or now < cooldown_until
+            if blocked:
+                if now < cooldown_until:
+                    left = max(1, (cooldown_until - now) // 60)
+                    skips.append(f"{side}: cooldown {left} мин")
+                else:
+                    skips.append(f"{side}: лимит входов {attempts}")
             desired = (
                 []
                 if blocked
                 else self._select_levels(
-                    side, mid, self.max_pending_per_side
+                    side, mid, self.max_pending_per_side, skips
                 )
             )
 
@@ -1001,9 +1042,11 @@ class Scalper:
                         break
                 if match is None:
                     about_to_fill = (
-                        side == "buy" and float(tick.bid) - old_price < min_gap
+                        side == "buy"
+                        and float(tick.bid) - old_price < cancel_guard
                     ) or (
-                        side == "sell" and old_price - float(tick.ask) < min_gap
+                        side == "sell"
+                        and old_price - float(tick.ask) < cancel_guard
                     )
                     if not about_to_fill:
                         self._remove_order(order, "level_gone")
@@ -1033,21 +1076,29 @@ class Scalper:
                     continue
                 total = sum(side_counts.values())
                 if total >= self.max_pending_total:
+                    skips.append("лимит заготовок всего")
                     break
                 if side_counts[side] >= self.max_pending_per_side:
+                    skips.append(f"{side}: лимит заготовок на сторону")
                     break
+                if side == "buy" and level.price > float(tick.ask) - min_gap:
+                    skips.append(f"buy {level.price:.2f}: too_close")
+                    continue
+                if side == "sell" and level.price < float(tick.bid) + min_gap:
+                    skips.append(f"sell {level.price:.2f}: too_close")
+                    continue
                 params = self._order_params(side, level, tick, self.atr)
                 if params is None:
+                    skips.append(f"{side} {level.price:.2f}: risk/tp")
                     continue
                 if not self._margin_ok(side, params["price"], params["lot"]):
-                    self.log(
-                        f"{side.upper()} {level.price:.2f}: "
-                        "не хватает свободной маржи — пропуск"
-                    )
+                    skips.append(f"{side} {level.price:.2f}: margin")
                     continue
                 self._place_order(side, level, params, tick)
                 covered.append(level.price)
                 side_counts[side] += 1
+
+        self._log_skips(skips)
 
         # Диагностика: если заготовок нет вовсе.
         if (
