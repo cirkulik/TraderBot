@@ -215,7 +215,6 @@ class Scalper:
         if self.cancel_pending_on_fill not in ("all", "side", "none"):
             self.cancel_pending_on_fill = "all"
         self.max_levels_per_side = max(1, int(sc.get("max_levels_per_side", 2)))
-        self.cooldown_minutes = max(0, int(sc.get("cooldown_minutes", 20)))
 
         self.level_min_distance = float(sc.get("level_min_distance", 0.10))
         self.level_max_distance = float(sc.get("level_max_distance", 30.0))
@@ -369,7 +368,6 @@ class Scalper:
         default = {
             "attempts": {"buy": 0, "sell": 0},
             "used": {"buy": [], "sell": []},
-            "cooldown_until": {"buy": 0, "sell": 0},
             "positions": {},
         }
         if not self.state_path.exists():
@@ -378,12 +376,12 @@ class Scalper:
             data = json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return default
+        data.pop("cooldown_until", None)
         for key, value in default.items():
             data.setdefault(key, value)
         for side in ("buy", "sell"):
             data["attempts"].setdefault(side, 0)
             data["used"].setdefault(side, [])
-            data["cooldown_until"].setdefault(side, 0)
         data.setdefault("positions", {})
         return data
 
@@ -1012,14 +1010,9 @@ class Scalper:
 
         for side in ("buy", "sell"):
             attempts = int(self.state["attempts"].get(side, 0))
-            cooldown_until = int(self.state["cooldown_until"].get(side, 0))
-            blocked = attempts >= self.max_levels_per_side or now < cooldown_until
+            blocked = attempts >= self.max_levels_per_side
             if blocked:
-                if now < cooldown_until:
-                    left = max(1, (cooldown_until - now) // 60)
-                    skips.append(f"{side}: cooldown {left} мин")
-                else:
-                    skips.append(f"{side}: лимит входов {attempts}")
+                skips.append(f"{side}: лимит входов {attempts}")
             desired = (
                 []
                 if blocked
@@ -1464,11 +1457,7 @@ class Scalper:
                 self.state["used"][side] = [float(value) for value in used[-10:]]
                 attempts = int(self.state["attempts"].get(side, 0))
                 if attempts >= self.max_levels_per_side:
-                    self.state["cooldown_until"][side] = int(
-                        now_server + self.cooldown_minutes * 60
-                    )
                     self.state["attempts"][side] = 0
-                    self.state["used"][side] = []
             else:
                 self.state["attempts"][side] = 0
                 self.state["used"][side] = []
@@ -1538,8 +1527,8 @@ class Scalper:
             f"при заполнении снимать: {self.cancel_pending_on_fill}"
         )
         self.log(
-            f"  лимитки живут {self.order_ttl} мин | пауза после "
-            f"{self.max_levels_per_side} SL: {self.cooldown_minutes} мин"
+            f"  лимитки живут {self.order_ttl} мин | без паузы после "
+            f"{self.max_levels_per_side} SL"
         )
         self.log(f"  журнал: {self.journal_path}")
         self.log(f"  состояние: {self.state_path}")

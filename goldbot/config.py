@@ -199,7 +199,6 @@ DEFAULTS: dict[str, Any] = {
         "pending_min_gap": 1.0,
         "cancel_pending_on_fill": "all",
         "max_levels_per_side": 2,
-        "cooldown_minutes": 20,
         "level_min_distance": 0.10,
         "level_max_distance": 30.0,
         "level_move_tolerance": 0.50,
