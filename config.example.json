@@ -340,8 +340,8 @@
     "log_path": "data/executor.log"
   },
   "scalper": {
-    "enabled": false,
-    "dry_run": true,
+    "enabled": true,
+    "dry_run": false,
     "allow_live": false,
     "notify_trades": true,
     "symbol": "XAUUSD",

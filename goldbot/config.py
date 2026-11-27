@@ -182,8 +182,8 @@ DEFAULTS: dict[str, Any] = {
         "log_path": "data/executor.log",
     },
     "scalper": {
-        "enabled": False,
-        "dry_run": True,
+        "enabled": True,
+        "dry_run": False,
         "allow_live": False,
         "notify_trades": True,
         "symbol": "XAUUSD",
