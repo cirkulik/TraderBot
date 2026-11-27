@@ -206,6 +206,14 @@ class Scalper:
         self.history_bars = max(500, int(sc.get("history_bars", 3000)))
         self.order_ttl = max(1, int(sc.get("order_ttl_minutes", 60)))
         self.max_positions = max(1, int(sc.get("max_positions", 2)))
+        self.max_pending_per_side = max(1, int(sc.get("max_pending_per_side", 3)))
+        self.max_pending_total = max(1, int(sc.get("max_pending_total", 6)))
+        self.pending_min_gap = float(sc.get("pending_min_gap", 1.0))
+        self.cancel_pending_on_fill = str(
+            sc.get("cancel_pending_on_fill", "all")
+        ).lower()
+        if self.cancel_pending_on_fill not in ("all", "side", "none"):
+            self.cancel_pending_on_fill = "all"
         self.max_levels_per_side = max(1, int(sc.get("max_levels_per_side", 2)))
         self.cooldown_minutes = max(0, int(sc.get("cooldown_minutes", 20)))
 
@@ -281,7 +289,7 @@ class Scalper:
         self.last_refresh = 0.0
         self._known_positions: set[int] = set()
         self._last_place_log = 0.0
-        self._dry_orders: dict[str, float] = {}
+        self._dry_orders: dict[str, list[tuple[float, float]]] = {}
         self._bot = self._make_bot()
 
     # --- служебное ---------------------------------------------------------
@@ -666,42 +674,6 @@ class Scalper:
                 return True
         return False
 
-    def _choose(
-        self,
-        side: str,
-        price: float,
-        bias: str,
-        atr_value: float,
-        spread_points: float,
-        adx_value: float,
-    ) -> Level | None:
-        best: tuple[float, float, Level] | None = None
-        for level in self.levels:
-            level_side = "sell" if level.price > price else "buy"
-            if level_side != side:
-                continue
-            distance = abs(level.price - price)
-            if distance < self.level_min_distance or distance > self.level_max_distance:
-                continue
-            score = self._score_level(
-                level, price, bias, atr_value, spread_points, adx_value
-            )
-            if score < self.min_score:
-                continue
-            if self._is_used(side, level.price):
-                continue
-            if (
-                best is None
-                or score > best[0] + 1e-9
-                or (abs(score - best[0]) <= 1e-9 and distance < best[1])
-            ):
-                best = (score, distance, level)
-        if best is None:
-            return None
-        level = best[2]
-        level.score = best[0]
-        return level
-
     # --- параметры ордера --------------------------------------------------
     def _target_tp(self, side: str, entry: float, sl: float, levels: list[Level]) -> float:
         risk = abs(entry - sl)
@@ -816,7 +788,9 @@ class Scalper:
                 score=round(level.score, 1),
                 note="dry_run",
             )
-            self._dry_orders[side] = time.time()
+            self._dry_orders.setdefault(side, []).append(
+                (float(params["price"]), time.time())
+            )
             self._last_place_log = time.time()
             return
 
@@ -913,103 +887,176 @@ class Scalper:
             self.log(f"лимитка #{order.ticket} не снята: {code} {comment}")
         return ok
 
-    def _side_busy(self, side: str, positions: dict, orders: dict) -> bool:
-        return any(self._pos_side(pos) == side for pos in positions.values()) or any(
-            self._order_side(order) == side for order in orders.values()
-        )
+    def _select_levels(
+        self, side: str, price: float, limit: int, spread: float
+    ) -> list[Level]:
+        """Лучшие уровни на сторону для заготовок (без близких дублей)."""
+        candidates: list[tuple[float, float, Level]] = []
+        for level in self.levels:
+            level_side = "sell" if level.price > price else "buy"
+            if level_side != side:
+                continue
+            distance = abs(level.price - price)
+            if distance < self.level_min_distance or distance > self.level_max_distance:
+                continue
+            score = self._score_level(
+                level, price, self.bias, self.atr, spread, self.adx
+            )
+            if score < self.min_score:
+                continue
+            if self._is_used(side, level.price):
+                continue
+            candidates.append((score, distance, level))
 
-    def _sync_pending(self, orders: dict, positions: dict, tick) -> None:
-        if not orders:
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        selected: list[Level] = []
+        for score, _, level in candidates:
+            if any(
+                abs(level.price - other.price) < self.pending_min_gap
+                for other in selected
+            ):
+                continue
+            level.score = score
+            selected.append(level)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    def _dry_prices(self, side: str) -> list[float]:
+        """Цены «виртуальных» заготовок в dry-run, чтобы не спамить лог."""
+        if not self.dry_run:
+            return []
+        now = time.time()
+        fresh = [
+            (price, stamp)
+            for price, stamp in self._dry_orders.get(side, [])
+            if now - stamp < self.refresh_seconds
+        ]
+        self._dry_orders[side] = fresh
+        return [price for price, _ in fresh]
+
+    def _sync_grid(self, tick, positions: dict | None = None) -> None:
+        """Держит набор заготовок: ставит недостающие, снимает лишние."""
+        if tick is None or tick.time <= 0:
             return
-        market_ok = self._market_ok(tick)
-        spread = self._spread_points(tick)
-        now = int(tick.time) if tick is not None and tick.time else int(time.time())
+        positions = positions if positions is not None else self.positions()
+        orders = self.pending_orders()
+        now = int(tick.time)
         mid = (float(tick.bid) + float(tick.ask)) / 2.0
+        spread = self._spread_points(tick)
         min_gap = max(self.stops_level * self.point, self.level_min_distance)
 
+        # Просроченные заготовки снимаем всегда, даже при закрытом рынке.
         for order in list(orders.values()):
-            side = self._order_side(order)
-            if not side:
-                continue
-            if any(self._pos_side(pos) == side for pos in positions.values()):
-                self._remove_order(order, "position_open")
-                continue
             age = now - int(getattr(order, "time_setup", now))
             if age >= self.order_ttl * 60:
                 self._remove_order(order, "expired")
-                continue
-            if not market_ok or spread > self.max_spread_points:
-                continue
+                orders.pop(int(order.ticket), None)
 
-            chosen = self._choose(side, mid, self.bias, self.atr, spread, self.adx)
-            old_price = float(order.price_open)
-            if chosen is None:
-                wrong = (
-                    side == "buy" and old_price > float(tick.bid) - min_gap
-                ) or (
-                    side == "sell" and old_price < float(tick.ask) + min_gap
-                )
-                if wrong:
-                    self._remove_order(order, "wrong_side")
-                continue
-
-            params = self._order_params(side, chosen, tick, self.atr)
-            if params is None:
-                continue
-            if abs(params["price"] - old_price) <= self.level_move_tolerance:
-                continue
-            if side == "buy" and float(tick.bid) - old_price < min_gap:
-                continue
-            if side == "sell" and old_price - float(tick.ask) < min_gap:
-                continue
-            self._modify_order(order, params, tick)
-
-    def _maybe_place(self, tick) -> None:
-        if not self._market_ok(tick):
-            return
-        spread = self._spread_points(tick)
-        if spread > self.max_spread_points:
+        # Пока открыта позиция, новые заготовки не ставим: снимаем по политике.
+        if positions:
+            if self.cancel_pending_on_fill != "none":
+                open_sides = {self._pos_side(pos) for pos in positions.values()}
+                for order in list(orders.values()):
+                    if (
+                        self.cancel_pending_on_fill == "all"
+                        or self._order_side(order) in open_sides
+                    ):
+                        self._remove_order(order, "position_open")
+                        orders.pop(int(order.ticket), None)
             return
 
-        positions = self.positions()
-        orders = self.pending_orders()
-        if len(positions) + len(orders) >= self.max_positions:
+        # Рынок закрыт или спред широкий — новые заготовки не ставим.
+        if not self._market_ok(tick) or spread > self.max_spread_points:
             return
 
-        now = int(tick.time) if tick is not None and tick.time else int(time.time())
-        mid = (float(tick.bid) + float(tick.ask)) / 2.0
-        placed = False
+        side_counts = {"buy": 0, "sell": 0}
+        for order in orders.values():
+            side = self._order_side(order)
+            if side in side_counts:
+                side_counts[side] += 1
 
         for side in ("buy", "sell"):
-            if len(positions) + len(orders) >= self.max_positions:
-                break
-            if self._side_busy(side, positions, orders):
-                continue
-            if self.dry_run and (
-                time.time() - self._dry_orders.get(side, 0.0) < self.refresh_seconds
-            ):
-                continue
-            if int(self.state["attempts"].get(side, 0)) >= self.max_levels_per_side:
-                continue
-            if now < int(self.state["cooldown_until"].get(side, 0)):
-                continue
-
-            chosen = self._choose(side, mid, self.bias, self.atr, spread, self.adx)
-            if chosen is None:
-                continue
-            params = self._order_params(side, chosen, tick, self.atr)
-            if params is None:
-                continue
-            if not self._margin_ok(side, params["price"], params["lot"]):
-                self.log(
-                    f"{side.upper()} {chosen.price:.2f}: не хватает свободной маржи — пропуск"
+            blocked = (
+                int(self.state["attempts"].get(side, 0)) >= self.max_levels_per_side
+                or now < int(self.state["cooldown_until"].get(side, 0))
+            )
+            desired = (
+                []
+                if blocked
+                else self._select_levels(
+                    side, mid, self.max_pending_per_side, spread
                 )
-                continue
-            self._place_order(side, chosen, params, tick)
-            placed = True
-            orders = self.pending_orders()
+            )
 
-        if not placed and time.time() - self._last_place_log >= self.refresh_seconds:
+            # Сверяем уже стоящие заготовки с желаемыми уровнями.
+            covered: list[float] = self._dry_prices(side)
+            side_orders = [
+                order for order in orders.values() if self._order_side(order) == side
+            ]
+            for order in list(side_orders):
+                old_price = float(order.price_open)
+                match = None
+                for level in desired:
+                    if abs(level.price - old_price) <= self.level_move_tolerance:
+                        match = level
+                        break
+                if match is None:
+                    about_to_fill = (
+                        side == "buy" and float(tick.bid) - old_price < min_gap
+                    ) or (
+                        side == "sell" and old_price - float(tick.ask) < min_gap
+                    )
+                    if not about_to_fill:
+                        self._remove_order(order, "level_gone")
+                        orders.pop(int(order.ticket), None)
+                    continue
+                covered.append(match.price)
+                params = self._order_params(side, match, tick, self.atr)
+                if params is None:
+                    continue
+                if (
+                    abs(params["price"] - old_price) > self.level_move_tolerance
+                    or abs(params["sl"] - float(order.sl or 0))
+                    > max(0.05, self.point * 2)
+                    or abs(params["tp"] - float(order.tp or 0))
+                    > max(0.05, self.point * 2)
+                ):
+                    self._modify_order(order, params, tick)
+
+            side_counts[side] = len(covered)
+
+            # Ставим недостающие заготовки.
+            for level in desired:
+                if any(
+                    abs(level.price - price) <= self.level_move_tolerance
+                    for price in covered
+                ):
+                    continue
+                total = sum(side_counts.values())
+                if total >= self.max_pending_total:
+                    break
+                if side_counts[side] >= self.max_pending_per_side:
+                    break
+                params = self._order_params(side, level, tick, self.atr)
+                if params is None:
+                    continue
+                if not self._margin_ok(side, params["price"], params["lot"]):
+                    self.log(
+                        f"{side.upper()} {level.price:.2f}: "
+                        "не хватает свободной маржи — пропуск"
+                    )
+                    continue
+                self._place_order(side, level, params, tick)
+                covered.append(level.price)
+                side_counts[side] += 1
+
+        # Диагностика: если заготовок нет вовсе.
+        if (
+            not self.dry_run
+            and not self.pending_orders()
+            and time.time() - self._last_place_log >= self.refresh_seconds
+        ):
             self._last_place_log = time.time()
             top = sorted(self.levels, key=lambda item: item.score, reverse=True)[:3]
             parts = [
@@ -1018,7 +1065,7 @@ class Scalper:
                 for item in top
             ]
             self.log(
-                "нет входа: "
+                "нет заготовок: "
                 + ("; ".join(parts) if parts else "подходящих уровней нет")
             )
 
@@ -1070,6 +1117,13 @@ class Scalper:
                 f"🟢 SCALPER {side.upper()} {pos.volume} {self.symbol} @ {entry:.2f}\n"
                 f"SL {sl:.2f} · TP {tp:.2f}"
             )
+            if self.cancel_pending_on_fill != "none":
+                for order in list(self.pending_orders().values()):
+                    if (
+                        self.cancel_pending_on_fill == "all"
+                        or self._order_side(order) == side
+                    ):
+                        self._remove_order(order, "filled")
         if changed:
             self._save_state()
 
@@ -1424,14 +1478,19 @@ class Scalper:
             )
         self.log(f"  режим: {mode}")
         self.log(
-            f"  лот {self.lot} | magic {self.magic} | макс. слотов {self.max_positions}"
+            f"  лот {self.lot} | magic {self.magic} | макс. позиций {self.max_positions}"
         )
         self.log(
             f"  уровни каждые {self.refresh_seconds} с, опрос {self.poll_seconds:g} с"
         )
         self.log(
-            f"  лимитки живут {self.order_ttl} мин | уровней на сторону "
-            f"{self.max_levels_per_side} | пауза после двух SL {self.cooldown_minutes} мин"
+            f"  заготовок на сторону {self.max_pending_per_side}, всего "
+            f"{self.max_pending_total}, шаг {self.pending_min_gap:.2f} $ | "
+            f"при заполнении снимать: {self.cancel_pending_on_fill}"
+        )
+        self.log(
+            f"  лимитки живут {self.order_ttl} мин | пауза после "
+            f"{self.max_levels_per_side} SL: {self.cooldown_minutes} мин"
         )
         self.log(f"  журнал: {self.journal_path}")
         self.log(f"  состояние: {self.state_path}")
@@ -1472,13 +1531,11 @@ class Scalper:
             self.refresh_levels()
 
         positions = self.positions()
-        orders = self.pending_orders()
         now_server = int(tick.time)
         self._sync_closed(positions, now_server)
         self._register_new_positions(positions)
         self._manage_positions(positions, tick)
-        self._sync_pending(orders, positions, tick)
-        self._maybe_place(tick)
+        self._sync_grid(tick, positions)
 
     def run(self) -> None:
         self.startup()
