@@ -888,7 +888,7 @@ class Scalper:
         return ok
 
     def _select_levels(
-        self, side: str, price: float, limit: int, spread: float
+        self, side: str, price: float, limit: int
     ) -> list[Level]:
         """Лучшие уровни на сторону для заготовок (без близких дублей)."""
         candidates: list[tuple[float, float, Level]] = []
@@ -899,9 +899,7 @@ class Scalper:
             distance = abs(level.price - price)
             if distance < self.level_min_distance or distance > self.level_max_distance:
                 continue
-            score = self._score_level(
-                level, price, self.bias, self.atr, spread, self.adx
-            )
+            score = float(level.score)
             if score < self.min_score:
                 continue
             if self._is_used(side, level.price):
@@ -985,7 +983,7 @@ class Scalper:
                 []
                 if blocked
                 else self._select_levels(
-                    side, mid, self.max_pending_per_side, spread
+                    side, mid, self.max_pending_per_side
                 )
             )
 
