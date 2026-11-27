@@ -428,6 +428,21 @@
     "default_lang": "ru",
     "poll_commands": true
   },
+  "news": {
+    "enabled": true,
+    "time": "11:00",
+    "tz": "Europe/Moscow",
+    "impacts": ["High", "Medium"],
+    "currencies": [],
+    "max_events": 15,
+    "skip_weekend": true,
+    "pin": true,
+    "channels": [],
+    "send_admin": false,
+    "exchange_block": true,
+    "log_path": "data/news.log",
+    "state_path": "data/news_state.json"
+  },
   "hourly": {
     "lang": "az",
     "hours": 24,
