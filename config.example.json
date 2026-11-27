@@ -398,6 +398,27 @@
     "journal_path": "data/scalper.csv",
     "log_path": "data/scalper.log"
   },
+  "map": {
+    "enabled": true,
+    "symbol": "XAUUSD",
+    "interval_seconds": 60,
+    "history_bars": 3000,
+    "hours": 24,
+    "per_side": 4,
+    "max_zones_per_side": 4,
+    "max_points_per_side": 4,
+    "max_distance": 20.0,
+    "zone_half_width": 0.15,
+    "min_touches_zones": 2,
+    "min_touches_points": 2,
+    "point_zone_gap": 0.5,
+    "merge_points": 100,
+    "touch_tol_points": 15,
+    "touch_gap_points": 50,
+    "intervals": [30, 60],
+    "output_path": "",
+    "log_path": "data/map.log"
+  },
   "telegram": {
     "enabled": false,
     "token": "",
